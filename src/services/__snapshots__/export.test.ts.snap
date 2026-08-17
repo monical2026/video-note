@@ -1,0 +1,36 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`格式快照 1`] = `
+"---
+title: Closures Explained
+source: https://youtube.com/watch?v=abc
+channel: Dev
+date: 2026-08-17
+---
+
+# Closures Explained
+
+> 📌 一句话总结：讲透闭包
+
+## [03:12](https://www.youtube.com/watch?v=abc&t=192s) 闭包的定义与直觉
+
+- 闭包=函数+词法环境
+
+> ⭐ **我的笔记** · [03:15](https://www.youtube.com/watch?v=abc&t=195s)
+> 闭包 = 记住出生环境
+> 「closures capture state」
+
+> ❓ **我的疑惑** · [09:02](https://www.youtube.com/watch?v=abc&t=542s)
+> 和作用域链什么关系？
+> 「vs scope chain」
+> 🤖 **AI 解释**：作用域链是规则，闭包是现象。
+
+## 📚 知识点清单
+
+- **closure**：函数+词法环境
+
+## 前置知识 / 延伸
+
+- 作用域
+"
+`;
