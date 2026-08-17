@@ -26,22 +26,27 @@ export default defineContentScript({
      * 播放器捕获降级：让播放器自己加载字幕轨（其 timedtext 请求带有效 pot），
      * 用 PerformanceObserver 捕获该请求 URL 后再 fetch 完整字幕。
      */
-    function captureViaPlayer(tracks: CaptionTrack[]): Promise<Cue[]> {
+    function captureViaPlayer(tracks: CaptionTrack[], videoId: string): Promise<Cue[]> {
       return new Promise<Cue[]>((resolve) => {
         let settled = false;
-        const finish = (cues: Cue[]) => { if (!settled) { settled = true; clearTimeout(timer); resolve(cues); } };
+        let obs: PerformanceObserver | null = null;
+        // 统一收尾：幂等；三条路径（超时/命中/异常）都经此 disconnect observer
+        const finish = (cues: Cue[]) => { if (!settled) { settled = true; clearTimeout(timer); obs?.disconnect(); resolve(cues); } };
         // 整体 10s 超时：超时即放弃，返回空数组（不 reject 中断流程）
         const timer = setTimeout(() => {
           console.info('[video-note]', 'capture', `timeout (${tracks.length} tracks), host=${location.host}`);
           finish([]);
         }, 10_000);
         try {
-          const obs = new PerformanceObserver((list) => {
+          obs = new PerformanceObserver((list) => {
             for (const e of list.getEntries() as PerformanceResourceTiming[]) {
               if (!e.name.includes('/api/timedtext')) continue;
+              // 防 SPA 串台：只接受当前视频（URL query 带 v=videoId）的响应
+              try {
+                if (new URL(e.name).searchParams.get('v') !== videoId) continue;
+              } catch { /* URL 解析失败：忽略该 entry */ continue; }
               console.info('[video-note]', 'capture', `hit, host=${new URL(e.name).host}, len=${e.name.length}`);
-              obs.disconnect();
-              // 命中后用该 URL 在页面上下文 fetch 完整字幕
+              // 命中后不断开 observer：该次 fetch 失败/空 cues 时继续等后续命中，直至超时
               fetchCapturedUrl(e.name).then((cues) => {
                 console.info('[video-note]', 'capture', `fetched ${cues.length} cues`);
                 if (cues.length) finish(cues);
@@ -68,7 +73,7 @@ export default defineContentScript({
     }
 
     /** 字幕取数总入口：a) SSR 直抓 → b) 播放器捕获 → c) 空数组（Supadata 兜底） */
-    async function obtainCues(html: string): Promise<Cue[]> {
+    async function obtainCues(html: string, videoId: string): Promise<Cue[]> {
       const tracks = extractCaptionTracks(html);
       // a. SSR 直抓：手动轨优先 asr，逐轨尝试，取第一个非空（未来 YouTube 放宽 pot 校验时立即受益）
       const sorted = [...tracks].sort((a, b) => (a.kind === 'asr' ? 1 : 0) - (b.kind === 'asr' ? 1 : 0));
@@ -82,8 +87,9 @@ export default defineContentScript({
         } catch { /* 尝试下一轨道 */ }
       }
       console.info('[video-note]', 'ssr', `empty (${sorted.length} tracks)`);
-      // b. 播放器捕获降级
-      const captured = await captureViaPlayer(tracks);
+      // b. 播放器捕获降级；SSR 轨道为空时无字幕轨可触发，跳过白等
+      if (!tracks.length) return [];
+      const captured = await captureViaPlayer(tracks, videoId);
       if (captured.length) return captured;
       // c. 全失败 → 空数组，PAGE_INFO cues:[] 触发 Supadata 兜底链路
       return [];
@@ -97,7 +103,7 @@ export default defineContentScript({
         const meta = extractVideoMeta(html, location.href);
         if (!meta.videoId || meta.videoId === lastVideoId) return;
         lastVideoId = meta.videoId;
-        const cues = await obtainCues(html);
+        const cues = await obtainCues(html, meta.videoId);
         browser.runtime.sendMessage({ type: 'PAGE_INFO', meta, cues } satisfies Msg).catch(() => {});
       } catch { /* 页面未就绪，导航事件后重试 */ setTimeout(onPageChange, 1500); }
     }
