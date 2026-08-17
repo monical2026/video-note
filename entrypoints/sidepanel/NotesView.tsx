@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { Note } from '../../src/types';
 import { formatTime, tsLink } from '../../src/utils/time';
-import { sendMsg } from './state';
+import { sendMsg, loadVideoData } from './state';
 
 /** 单条笔记复制格式（与融合导出一致） */
 export function noteMarkdown(n: Note): string {
@@ -22,10 +22,23 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
     if (n.videoId === props.currentVideoId) sendMsg({ type: 'SEEK', t: n.start });
     else browser.tabs.create({ url: tsLink(n.videoId, n.start) });
   };
+  const [explainingId, setExplainingId] = useState('');
+  const [explainError, setExplainError] = useState<{ id: string; msg: string } | null>(null);
   const explain = async (n: Note) => {
-    const r = await sendMsg<{ explanation: string }>({ type: 'EXPLAIN', videoId: n.videoId, start: n.start, end: n.end });
-    n.aiExplanation = r.explanation;
-    await sendMsg({ type: 'SAVE_NOTE', note: n });
+    setExplainingId(n.id);
+    setExplainError(null);
+    try {
+      const r = await sendMsg<{ explanation: string }>({ type: 'EXPLAIN', videoId: n.videoId, start: n.start, end: n.end });
+      n.aiExplanation = r.explanation;
+      await sendMsg({ type: 'SAVE_NOTE', note: n });
+      // 原地突变不触发 signal 更新，需重新加载以刷新列表
+      await loadVideoData(props.videoId);
+    } catch (err) {
+      setExplainError({ id: n.id, msg: err instanceof Error ? err.message : String(err) });
+      setTimeout(() => setExplainError(null), 3000);
+    } finally {
+      setExplainingId('');
+    }
   };
   if (!props.notes.length) return <div class="empty">本视频还没有笔记——选中字幕或按快捷键开始记录</div>;
   const exportMd = async (notesOnly: boolean, includeTranscript: boolean) => {
@@ -47,7 +60,12 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
           <div class="ops">
             <button onClick={() => copy(n)}>{copiedId === n.id ? '已复制' : '复制'}</button>
             <button onClick={() => jump(n)}>跳转</button>
-            {n.type === 'confusion' && !n.aiExplanation && <button onClick={() => explain(n)}>AI 解释</button>}
+            {n.type === 'confusion' && !n.aiExplanation && (
+              <button disabled={explainingId === n.id} onClick={() => explain(n)}>
+                {explainingId === n.id ? '解释中…' : 'AI 解释'}
+              </button>
+            )}
+            {explainError?.id === n.id && <span class="err">{explainError.msg}</span>}
           </div>
         </div>
       ))}
