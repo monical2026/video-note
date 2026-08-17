@@ -17,25 +17,35 @@ const deps = (over: any = {}) => ({
 });
 
 describe('router', () => {
-  it('PAGE_INFO 抓取并落库', async () => {
+  it('PAGE_INFO 带 cues 直存：跳过兜底，落库并广播', async () => {
     const d = deps();
-    await handleMessage({ type: 'PAGE_INFO', tracks: [{ baseUrl: 'u', lang: 'en', kind: 'asr' }], meta: { videoId: 'v', title: 'T', channel: 'C' } }, d);
-    expect(d.getTranscriptWithFallback).toHaveBeenCalled();
+    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'hello' }] }, d);
+    expect(d.getTranscriptWithFallback).not.toHaveBeenCalled();
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }]);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }]);
+    expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
+    expect(r).toEqual({ ok: true, cueCount: 1 });
   });
 
   it('PAGE_INFO 润色开关开启时先润色再存库，并广播通知面板', async () => {
     const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })) });
-    await handleMessage({ type: 'PAGE_INFO', tracks: [], meta: { videoId: 'v', title: 'T', channel: 'C' } }, d);
+    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'x' }] }, d);
     expect(d.polishTranscript).toHaveBeenCalled();
     expect(d.saveTranscript).toHaveBeenCalled();
     expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
   });
 
+  it('PAGE_INFO cues 为空时走 Supadata 兜底', async () => {
+    const d = deps();
+    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
+    expect(d.getTranscriptWithFallback).toHaveBeenCalledWith({ videoId: 'v', tracks: [] });
+    expect(d.saveVideo).toHaveBeenCalled();
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }]);
+  });
+
   it('PAGE_INFO 抓取失败时广播 TRANSCRIPT_FAILED 并返回 error', async () => {
     const d = deps({ getTranscriptWithFallback: vi.fn(async () => { throw new Error('无可用字幕通道'); }) });
-    const r = await handleMessage({ type: 'PAGE_INFO', tracks: [], meta: { videoId: 'v', title: 'T', channel: 'C' } }, d);
+    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
     expect(d.broadcast).toHaveBeenCalledWith({ type: 'TRANSCRIPT_FAILED', videoId: 'v', reason: '无可用字幕通道' });
     expect(r).toEqual({ error: '无可用字幕通道' });
     expect(d.saveVideo).not.toHaveBeenCalled();

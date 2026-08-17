@@ -22,7 +22,7 @@ export function extractVideoMeta(html: string, url: string): { videoId: string; 
   return { videoId, title: pr?.videoDetails?.title ?? (typeof document !== 'undefined' ? document.title : ''), channel: pr?.videoDetails?.author ?? '' };
 }
 
-/** 抓取字幕内容：json3 优先，XML 兜底（background 中执行，需 host_permissions） */
+/** 抓取字幕内容：json3 优先，XML 兜底（须在页面上下文执行以携带 potoken 会话） */
 export async function fetchCueTrack(baseUrl: string): Promise<Cue[]> {
   const res = await fetch(`${baseUrl}&fmt=json3`);
   if (res.ok) {

@@ -1,8 +1,7 @@
-import type { CaptionTrack } from '../adapters/youtube';
 import type { Cue, Note, Settings, Summary, VideoMeta } from '../types';
 
 export type Msg =
-  | { type: 'PAGE_INFO'; tracks: CaptionTrack[]; meta: { videoId: string; title: string; channel: string } }
+  | { type: 'PAGE_INFO'; meta: { videoId: string; title: string; channel: string }; cues: Cue[] }
   | { type: 'GET_VIDEO_DATA'; videoId: string }
   | { type: 'TRANSLATE'; videoId: string }
   | { type: 'SAVE_NOTE'; note: Note }

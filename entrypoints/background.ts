@@ -1,7 +1,6 @@
 import * as db from '../src/storage/db';
 import { getSettings, saveSettings } from '../src/storage/settings';
 import { getTranscriptWithFallback } from '../src/services/transcript';
-import { fetchCueTrack } from '../src/adapters/youtube';
 import { fetchSupadataTranscript } from '../src/adapters/supadata';
 import { googleFreeTranslate, runBatchTranslation } from '../src/services/translate';
 import { llmTranslateBatch, polishTranscript } from '../src/services/llm-translate';
@@ -12,11 +11,13 @@ import type { Msg } from '../src/messaging/protocol';
 import type { Cue } from '../src/types';
 
 export default defineBackground(() => {
-  // Supadata 兜底：每次调用时读设置，key 存在才启用兜底通道
+  // 点击工具栏图标直接打开侧边栏（不依赖 action 弹窗）
+  (browser as any).sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch?.(() => {});
+
+  // Supadata 兜底（timedtext 直抓已移至 content script 页面上下文）：key 存在才启用兜底通道
   const getTranscriptBound = async (input: any): Promise<{ cues: Cue[]; source: string }> => {
     const s = await getSettings();
     return getTranscriptWithFallback(input, {
-      fetchTrack: fetchCueTrack,
       supadata: s.supadataKey ? fetchSupadataTranscript : undefined,
       supadataKey: s.supadataKey || undefined,
     });

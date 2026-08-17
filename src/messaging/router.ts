@@ -30,13 +30,16 @@ export interface RouterDeps {
 export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
-      let cues;
-      try {
-        ({ cues } = await deps.getTranscriptWithFallback({ videoId: msg.meta.videoId, tracks: msg.tracks }));
-      } catch (e) {
-        // 无字幕/双通道均失败：广播给侧边栏展示错误条，可手动重试
-        deps.broadcast({ type: 'TRANSCRIPT_FAILED', videoId: msg.meta.videoId, reason: e instanceof Error ? e.message : String(e) });
-        return { error: e instanceof Error ? e.message : String(e) };
+      // content script 已在页面上下文下载 timedtext；cues 为空说明直抓失败，走 Supadata 兜底
+      let cues = msg.cues;
+      if (!cues.length) {
+        try {
+          ({ cues } = await deps.getTranscriptWithFallback({ videoId: msg.meta.videoId, tracks: [] }));
+        } catch (e) {
+          // 无字幕/双通道均失败：广播给侧边栏展示错误条，可手动重试
+          deps.broadcast({ type: 'TRANSCRIPT_FAILED', videoId: msg.meta.videoId, reason: e instanceof Error ? e.message : String(e) });
+          return { error: e instanceof Error ? e.message : String(e) };
+        }
       }
       // 润色：开关开启且已配 LLM 则先润色再落库；失败静默跳过，用原字幕
       let final = cues;

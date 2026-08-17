@@ -1,4 +1,5 @@
-import { extractCaptionTracks, extractVideoMeta } from '../src/adapters/youtube';
+import { extractCaptionTracks, extractVideoMeta, fetchCueTrack } from '../src/adapters/youtube';
+import type { Cue } from '../src/types';
 import type { Msg } from '../src/messaging/protocol';
 
 export default defineContentScript({
@@ -17,7 +18,16 @@ export default defineContentScript({
         if (!meta.videoId || meta.videoId === lastVideoId) return;
         lastVideoId = meta.videoId;
         const tracks = extractCaptionTracks(html);
-        browser.runtime.sendMessage({ type: 'PAGE_INFO', tracks, meta } satisfies Msg).catch(() => {});
+        // timedtext 必须在页面上下文下载（带会话/potoken），background fetch 会拿到 200+空 body
+        let cues: Cue[] = [];
+        const sorted = [...tracks].sort((a, b) => (a.kind === 'asr' ? 1 : 0) - (b.kind === 'asr' ? 1 : 0));
+        for (const t of sorted) {
+          try {
+            const c = await fetchCueTrack(t.baseUrl);
+            if (c.length) { cues = c; break; }
+          } catch { /* 尝试下一轨道 */ }
+        }
+        browser.runtime.sendMessage({ type: 'PAGE_INFO', meta, cues } satisfies Msg).catch(() => {});
       } catch { /* 页面未就绪，导航事件后重试 */ setTimeout(onPageChange, 1500); }
     }
 
