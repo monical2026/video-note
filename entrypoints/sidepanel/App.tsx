@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, videoInfo } from './state';
+import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, videoInfo } from './state';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -53,7 +53,10 @@ export function App() {
           }}
         />}
         {tab === 'notes' && <NotesView notes={notes.value} videoId={videoInfo.value?.videoId ?? ''} currentVideoId={videoInfo.value?.videoId ?? ''} />}
-        {tab === 'summary' && <SummaryView />}
+        {tab === 'summary' && <SummaryView
+          summary={summary.value} llmConfigured={!!settings.value?.llm}
+          videoId={videoInfo.value?.videoId ?? ''} onSeek={(t) => sendMsg({ type: 'SEEK', t })}
+        />}
         {tab === 'library' && <LibraryView />}
         {tab === 'settings' && <SettingsView />}
       </main>
