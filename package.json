@@ -1,0 +1,28 @@
+{
+  "name": "video-note",
+  "description": "看视频做笔记：逐字稿、中英对照、AI 摘要、融合导出",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.1",
+    "idb": "^8.0.3",
+    "linkedom": "^0.18.13",
+    "preact": "^10.29.8",
+    "wxt": "^0.21.4"
+  },
+  "devDependencies": {
+    "@testing-library/preact": "^3.2.4",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

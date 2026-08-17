@@ -1,0 +1,8 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  },
+  "include": [".wxt/wxt.d.ts", "src", "entrypoints", "wxt.config.ts", "vitest.config.ts"]
+}

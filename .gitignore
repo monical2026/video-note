@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# build output
+.output/
+.wxt/
+stats.html
+
+# env（密钥绝不提交）
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
