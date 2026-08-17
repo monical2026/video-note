@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, refreshSettings, sendMsg, settings, videoInfo } from './state';
+import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, videoInfo } from './state';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -45,9 +45,14 @@ export function App() {
           cues={cues.value} videoId={videoInfo.value?.videoId ?? ''} currentTime={currentTime.value}
           mode={(settings.value?.displayMode ?? 'bilingual') as any}
           onSeek={(t) => sendMsg({ type: 'SEEK', t })}
-          onSelect={(sel) => (noteEditorCtx.value = { start: sel[0]?.start ?? 0, end: sel.at(-1)!.start + sel.at(-1)!.dur, excerpt: sel.map((c) => c.text).join(' ') })}
+          onSelect={(sel) => {
+            // 空选区早退：不打开编辑器，也避免空 excerpt 传入
+            if (!sel.length) return;
+            const last = sel.at(-1)!;
+            noteEditorCtx.value = { start: sel[0]!.start, end: last.start + last.dur, excerpt: sel.map((c) => c.text).join(' ') };
+          }}
         />}
-        {tab === 'notes' && <NotesView />}
+        {tab === 'notes' && <NotesView notes={notes.value} videoId={videoInfo.value?.videoId ?? ''} currentVideoId={videoInfo.value?.videoId ?? ''} />}
         {tab === 'summary' && <SummaryView />}
         {tab === 'library' && <LibraryView />}
         {tab === 'settings' && <SettingsView />}
