@@ -1,6 +1,8 @@
 import { defineConfig } from 'wxt';
 
 export default defineConfig({
+  // 输出到不带点的目录（默认 .output 在 Finder/文件选择框中隐藏，用户加载不便）
+  outDir: 'dist',
   manifest: {
     name: 'Video Note',
     description: '看视频做笔记：逐字稿、中英对照、AI 摘要、融合导出',
