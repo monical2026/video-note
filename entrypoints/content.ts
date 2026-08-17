@@ -108,9 +108,14 @@ export default defineContentScript({
       } catch { /* 页面未就绪，导航事件后重试 */ setTimeout(onPageChange, 1500); }
     }
 
+    /** 取页面视频元素：优先 YouTube 主播放器，回退任意 video */
+    function getVideo(): HTMLVideoElement | null {
+      return document.querySelector<HTMLVideoElement>('video.html5-main-video') ?? document.querySelector<HTMLVideoElement>('video');
+    }
+
     // 播放进度：500ms 节流广播
     setInterval(() => {
-      const v = document.querySelector('video');
+      const v = getVideo();
       if (!v) return;
       const t = Math.floor(v.currentTime);
       if (t !== lastTimeSent) { lastTimeSent = t; browser.runtime.sendMessage({ type: 'PLAYBACK', t } satisfies Msg).catch(() => {}); }
@@ -118,8 +123,11 @@ export default defineContentScript({
 
     // 接收指令：SEEK / CAPTURE_NOW
     browser.runtime.onMessage.addListener((msg: Msg) => {
-      const v = document.querySelector('video');
-      if (msg.type === 'SEEK' && v) v.currentTime = msg.t;
+      const v = getVideo();
+      if (msg.type === 'SEEK' && v) {
+        console.info('[video-note] seek →', msg.t);
+        v.currentTime = msg.t;
+      }
       if (msg.type === 'CAPTURE_NOW' && v) {
         const t = v.currentTime;
         // 摘录当前句前后 ±1 句：由 background 持有字幕，这里只报时间，面板负责组稿

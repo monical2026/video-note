@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals';
-import type { Cue, Note, Settings, Summary, VideoMeta } from '../../src/types';
+import type { Cue, DisplayMode, Note, Settings, Summary, VideoMeta } from '../../src/types';
 
 export const videoInfo = signal<VideoMeta | null>(null);
 export const cues = signal<Cue[]>([]);
@@ -7,6 +7,7 @@ export const notes = signal<Note[]>([]);
 export const summary = signal<Summary | null>(null);
 export const settings = signal<Settings | null>(null);
 export const currentTime = signal(0);
+export const displayMode = signal<DisplayMode>('bilingual');
 export const transcriptError = signal<string>('');
 export const activeTab = signal<'transcript' | 'notes' | 'summary' | 'library' | 'settings'>('transcript');
 export const noteEditorCtx = signal<{ start: number; end: number; excerpt: string } | null>(null);
@@ -23,4 +24,7 @@ export async function loadVideoData(videoId: string) {
   videoInfo.value = d.video; cues.value = d.cues; notes.value = d.notes; summary.value = d.summary;
 }
 
-export async function refreshSettings() { settings.value = await sendMsg<Settings>({ type: 'GET_SETTINGS' }); }
+export async function refreshSettings() {
+  settings.value = await sendMsg<Settings>({ type: 'GET_SETTINGS' });
+  displayMode.value = settings.value.displayMode;
+}

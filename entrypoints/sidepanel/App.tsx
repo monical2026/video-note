@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
+import { activeTab, cues, currentTime, displayMode, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -77,6 +77,16 @@ export function App() {
           </div>
         )}
         {tab === 'transcript' && (
+          <div class="mode-switch" data-testid="mode-switch">
+            {([['bilingual', '中英对照'], ['zh', '仅中文'], ['en', '仅英文']] as const).map(([m, label]) => (
+              <button key={m} class={displayMode.value === m ? 'on' : ''} onClick={() => {
+                displayMode.value = m;
+                sendMsg({ type: 'SAVE_SETTINGS', patch: { displayMode: m } });
+              }}>{label}</button>
+            ))}
+          </div>
+        )}
+        {tab === 'transcript' && (
           <div class="translate-bar">
             <span>未翻译句数 {pendingCount}</span>
             <button disabled={!currentVideoId || translating || !pendingCount} onClick={() => triggerTranslate(currentVideoId)}>
@@ -86,7 +96,7 @@ export function App() {
         )}
         {tab === 'transcript' && <TranscriptView
           cues={cues.value} videoId={videoInfo.value?.videoId ?? ''} currentTime={currentTime.value}
-          mode={(settings.value?.displayMode ?? 'bilingual') as any}
+          mode={displayMode.value}
           onSeek={(t) => sendMsg({ type: 'SEEK', t })}
           onSelect={(sel) => {
             // 空选区早退：不打开编辑器，也避免空 excerpt 传入

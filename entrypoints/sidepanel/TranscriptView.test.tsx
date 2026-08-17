@@ -29,3 +29,20 @@ it('当前播放句有高亮类名', () => {
   const { getByTestId } = render(<TranscriptView cues={cues} videoId="v" currentTime={4} mode="en" onSeek={() => {}} onSelect={() => {}} />);
   expect(getByTestId('cue-1').className).toContain('active');
 });
+
+it('点击整行触发 onSeek；有文字选区时点击不触发', () => {
+  const onSeek = vi.fn();
+  const { getByTestId, unmount } = render(
+    <TranscriptView cues={cues} videoId="v" currentTime={0} mode="bilingual" onSeek={onSeek} onSelect={() => {}} />,
+  );
+  // 无选区：点击行触发跳转
+  vi.stubGlobal('getSelection', () => ({ toString: () => '' }));
+  fireEvent.click(getByTestId('cue-1'));
+  expect(onSeek).toHaveBeenCalledWith(3);
+  // 有选区（划选文字记笔记）：点击行不触发跳转
+  vi.stubGlobal('getSelection', () => ({ toString: () => 'world' }));
+  fireEvent.click(getByTestId('cue-1'));
+  expect(onSeek).toHaveBeenCalledTimes(1);
+  vi.unstubAllGlobals();
+  unmount();
+});
