@@ -26,7 +26,7 @@ export function TranscriptView(props: {
       {props.cues.map((c, i) => (
         <div key={i} data-testid={`cue-${i}`} class={`cue ${isCurrent(c, i) ? 'active' : ''}`}
           onClick={() => { if (window.getSelection()?.toString()) return; props.onSeek(c.start); }}>
-          <button data-testid={`ts-${i}`} class="ts" onClick={() => props.onSeek(c.start)}>{formatTime(c.start)}</button>
+          <button data-testid={`ts-${i}`} class="ts" onClick={(e) => { e.stopPropagation(); props.onSeek(c.start); }}>{formatTime(c.start)}</button>
           {props.mode !== 'zh' && <div class="en">{c.text}</div>}
           {props.mode !== 'en' && <div class="zh">{c.zh ?? '（未翻译）'}</div>}
         </div>

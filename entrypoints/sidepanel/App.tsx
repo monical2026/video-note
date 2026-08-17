@@ -82,6 +82,7 @@ export function App() {
               <button key={m} class={displayMode.value === m ? 'on' : ''} onClick={() => {
                 displayMode.value = m;
                 sendMsg({ type: 'SAVE_SETTINGS', patch: { displayMode: m } });
+                if (settings.value) settings.value = { ...settings.value, displayMode: m };
               }}>{label}</button>
             ))}
           </div>
