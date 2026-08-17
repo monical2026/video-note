@@ -17,6 +17,7 @@ export interface RouterDeps {
   googleFreeTranslate(text: string): Promise<string>;
   runBatchTranslation(cues: Cue[], fn: (t: string) => Promise<string>, opts: any): Promise<{ translated: Cue[]; failed: number }>;
   llmTranslateBatch(config: any, texts: string[]): Promise<string[]>;
+  polishTranscript(config: any, cues: Cue[]): Promise<Cue[]>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
@@ -30,9 +31,17 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
       const { cues } = await deps.getTranscriptWithFallback({ videoId: msg.meta.videoId, tracks: msg.tracks });
+      // 润色：开关开启且已配 LLM 则先润色再落库；失败静默跳过，用原字幕
+      let final = cues;
+      const s = await deps.getSettings();
+      if (s.polishEnabled && s.llm) {
+        try { final = await deps.polishTranscript(s.llm, cues); } catch { /* 用原字幕 */ }
+      }
       await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
-      await deps.saveTranscript(msg.meta.videoId, cues);
-      return { ok: true, cueCount: cues.length };
+      await deps.saveTranscript(msg.meta.videoId, final);
+      // 处理完成后广播，通知 sidepanel 刷新（sidepanel 依据 sender.tab 区分原始消息）
+      deps.broadcast(msg);
+      return { ok: true, cueCount: final.length };
     }
     case 'GET_VIDEO_DATA': {
       const [video, cues, notes, summary] = await Promise.all([

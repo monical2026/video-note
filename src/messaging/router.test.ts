@@ -11,7 +11,7 @@ const deps = (over: any = {}) => ({
   saveSettings: vi.fn(),
   getTranscriptWithFallback: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], source: 'youtube' as const })),
   googleFreeTranslate: vi.fn(async () => '你好'), runBatchTranslation: vi.fn(async (c: any[]) => ({ translated: c.map((x) => ({ ...x, zh: '译' })), failed: 0 })),
-  llmTranslateBatch: vi.fn(), explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
+  llmTranslateBatch: vi.fn(), polishTranscript: vi.fn(async (_c: any, cs: any[]) => cs), explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
   buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
   listVideosWithNotes: vi.fn(async () => [{ video: { videoId: 'v', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 }, noteCount: 3, lastAt: 9 }]), ...over,
 });
@@ -23,6 +23,14 @@ describe('router', () => {
     expect(d.getTranscriptWithFallback).toHaveBeenCalled();
     expect(d.saveVideo).toHaveBeenCalled();
     expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }]);
+  });
+
+  it('PAGE_INFO 润色开关开启时先润色再存库，并广播通知面板', async () => {
+    const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })) });
+    await handleMessage({ type: 'PAGE_INFO', tracks: [], meta: { videoId: 'v', title: 'T', channel: 'C' } }, d);
+    expect(d.polishTranscript).toHaveBeenCalled();
+    expect(d.saveTranscript).toHaveBeenCalled();
+    expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
   });
 
   it('EXPLAIN 用字幕窗口调用 explainConfusion 并返回解释', async () => {

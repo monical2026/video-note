@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, videoInfo } from './state';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
@@ -12,6 +12,19 @@ const TABS = [
 ] as const;
 
 export function App() {
+  const [translating, setTranslating] = useState(false);
+  const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
+
+  const triggerTranslate = async (videoId: string) => {
+    if (!videoId || translating) return;
+    setTranslating(true);
+    try {
+      await sendMsg({ type: 'TRANSLATE', videoId });
+      await loadVideoData(videoId);
+    } catch { /* 失败静默：保留原字幕，可手动重试 */ }
+    finally { setTranslating(false); }
+  };
+
   useEffect(() => {
     refreshSettings();
     // 找当前 YouTube 标签页拿 videoId
@@ -20,14 +33,29 @@ export function App() {
       const videoId = m?.[1];
       if (videoId) await loadVideoData(videoId);
     });
-    const listener = (msg: any) => {
+    const listener = (msg: any, sender: any) => {
       if (msg.type === 'PLAYBACK') currentTime.value = msg.t;
       if (msg.type === 'OPEN_NOTE_EDITOR') noteEditorCtx.value = msg;
-      if (msg.type === 'PAGE_INFO') loadVideoData(msg.meta.videoId);
+      // 仅接受 background 处理完成后的广播（sender 无 tab）；忽略 content script 发来的原始未处理消息
+      if (msg.type === 'PAGE_INFO' && !sender?.tab) loadVideoData(msg.meta.videoId);
     };
     browser.runtime.onMessage.addListener(listener);
     return () => browser.runtime.onMessage.removeListener(listener);
   }, []);
+
+  // 免费通道自动翻译：cues 非空且全部无译文时，每个视频自动触发一次
+  const pendingCount = cues.value.filter((c) => !c.zh).length;
+  const currentVideoId = videoInfo.value?.videoId ?? '';
+  useEffect(() => {
+    if (
+      !translating && currentVideoId && autoTranslatedFor.current !== currentVideoId &&
+      cues.value.length && pendingCount === cues.value.length &&
+      settings.value && settings.value.translateChannel === 'free'
+    ) {
+      autoTranslatedFor.current = currentVideoId;
+      triggerTranslate(currentVideoId);
+    }
+  }, [currentVideoId, pendingCount, translating, settings.value]);
 
   const tab = activeTab.value;
   return (
@@ -41,6 +69,14 @@ export function App() {
         </nav>
       </header>
       <main>
+        {tab === 'transcript' && (
+          <div class="translate-bar">
+            <span>未翻译句数 {pendingCount}</span>
+            <button disabled={!currentVideoId || translating || !pendingCount} onClick={() => triggerTranslate(currentVideoId)}>
+              {translating ? '翻译中…' : '翻译'}
+            </button>
+          </div>
+        )}
         {tab === 'transcript' && <TranscriptView
           cues={cues.value} videoId={videoInfo.value?.videoId ?? ''} currentTime={currentTime.value}
           mode={(settings.value?.displayMode ?? 'bilingual') as any}
