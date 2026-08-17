@@ -1,5 +1,5 @@
 import type { Msg, VideoData } from './protocol';
-import type { Cue, Note, Settings, Summary } from '../types';
+import type { Cue, Note, Settings, Summary, VideoMeta } from '../types';
 
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
@@ -20,6 +20,7 @@ export interface RouterDeps {
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
+  listVideosWithNotes(): Promise<{ video: VideoMeta; noteCount: number; lastAt: number }[]>;
   broadcast(msg: Msg): void;          // 面板广播（PLAYBACK/OPEN_NOTE_EDITOR 等）
   sendToActiveTab(msg: Msg): void;    // content script 定向
 }
@@ -81,6 +82,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       ]);
       return { markdown: deps.buildFusedMarkdown({ video, notes: notes as Note[], summary: msg.notesOnly ? undefined : summary, transcript: cues, includeTranscript: msg.includeTranscript }) };
     }
+    case 'LIST_LIBRARY': return { rows: await deps.listVideosWithNotes() };
     case 'GET_SETTINGS': return await deps.getSettings();
     case 'SAVE_SETTINGS': await deps.saveSettings(msg.patch); return { ok: true };
     case 'SEEK': deps.sendToActiveTab(msg); return { ok: true };

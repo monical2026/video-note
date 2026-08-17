@@ -12,7 +12,8 @@ const deps = (over: any = {}) => ({
   getTranscriptWithFallback: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], source: 'youtube' as const })),
   googleFreeTranslate: vi.fn(async () => '你好'), runBatchTranslation: vi.fn(async (c: any[]) => ({ translated: c.map((x) => ({ ...x, zh: '译' })), failed: 0 })),
   llmTranslateBatch: vi.fn(), explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
-  buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(), ...over,
+  buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
+  listVideosWithNotes: vi.fn(async () => [{ video: { videoId: 'v', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 }, noteCount: 3, lastAt: 9 }]), ...over,
 });
 
 describe('router', () => {
@@ -29,6 +30,14 @@ describe('router', () => {
     const r = await handleMessage({ type: 'EXPLAIN', videoId: 'v', start: 8, end: 12 }, d);
     expect(d.explainConfusion).toHaveBeenCalled();
     expect(r.explanation).toBe('解释');
+  });
+
+  it('LIST_LIBRARY 返回视频笔记列表', async () => {
+    const d = deps();
+    const r = await handleMessage({ type: 'LIST_LIBRARY' }, d);
+    expect(d.listVideosWithNotes).toHaveBeenCalled();
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toMatchObject({ noteCount: 3, lastAt: 9 });
   });
 
   it('未知消息类型返回错误', async () => {

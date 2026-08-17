@@ -15,6 +15,7 @@ export type Msg =
   | { type: 'GET_SETTINGS' }
   | { type: 'SAVE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'CAPTURE_NOW' }
+  | { type: 'LIST_LIBRARY' }
   | { type: 'OPEN_NOTE_EDITOR'; start: number; end: number; excerpt: string };
 
 export interface VideoData { video: VideoMeta | null; cues: Cue[]; notes: Note[]; summary: Summary | null; }

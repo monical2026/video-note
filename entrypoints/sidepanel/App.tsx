@@ -57,8 +57,11 @@ export function App() {
           summary={summary.value} llmConfigured={!!settings.value?.llm}
           videoId={videoInfo.value?.videoId ?? ''} onSeek={(t) => sendMsg({ type: 'SEEK', t })}
         />}
-        {tab === 'library' && <LibraryView />}
-        {tab === 'settings' && <SettingsView />}
+        {tab === 'library' && <LibraryView currentVideoId={videoInfo.value?.videoId ?? ''} />}
+        {tab === 'settings' && <SettingsView
+          settings={settings.value ?? { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false }}
+          onSave={async (patch) => { await sendMsg({ type: 'SAVE_SETTINGS', patch }); await refreshSettings(); }}
+        />}
       </main>
       {noteEditorCtx.value && <NoteEditor />}
     </div>
