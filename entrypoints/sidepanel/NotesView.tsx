@@ -12,7 +12,7 @@ export function noteMarkdown(n: Note): string {
   return lines.join('\n');
 }
 
-export function NotesView(props: { notes: Note[]; videoId: string; currentVideoId: string }) {
+export function NotesView(props: { notes: Note[]; videoId: string; currentVideoId: string; onNotesChanged?: () => void }) {
   const [copiedId, setCopiedId] = useState('');
   const copy = async (n: Note) => {
     await navigator.clipboard.writeText(noteMarkdown(n));
@@ -32,7 +32,9 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
       n.aiExplanation = r.explanation;
       await sendMsg({ type: 'SAVE_NOTE', note: n });
       // 原地突变不触发 signal 更新，需重新加载以刷新列表
-      await loadVideoData(props.videoId);
+      // LibraryView 场景（历史视频）：不能 loadVideoData（会把全局 signals 切到历史视频），改用回调本地刷新
+      if (props.onNotesChanged) props.onNotesChanged();
+      else await loadVideoData(props.videoId);
     } catch (err) {
       setExplainError({ id: n.id, msg: err instanceof Error ? err.message : String(err) });
       setTimeout(() => setExplainError(null), 3000);

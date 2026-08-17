@@ -20,7 +20,8 @@ it('笔记嵌入所属摘要小节', () => {
   expect(md.indexOf('⭐ **我的笔记**')).toBeGreaterThan(md.indexOf('闭包的定义与直觉'));
   expect(md).toContain('🤖 **AI 解释**');
   expect(md).toContain('## 📚 知识点清单');
-  expect(md).toContain('source: https://youtube.com/watch?v=abc');
+  expect(md).toContain('source: "https://youtube.com/watch?v=abc"');
+  expect(md).toContain('title: "Closures Explained"');
 });
 
 it('无摘要时退化为纯笔记时间线', () => {

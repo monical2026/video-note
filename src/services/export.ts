@@ -15,10 +15,12 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   const head = [
     '---',
-    `title: ${video.title}`,
-    `source: ${video.url}`,
-    `channel: ${video.channel}`,
-    `date: ${new Date().toISOString().slice(0, 10)}`,
+    // JSON.stringify 产出合法 YAML 双引号标量，自动转义 : 引号等特殊字符
+    `title: ${JSON.stringify(video.title)}`,
+    `source: ${JSON.stringify(video.url)}`,
+    `channel: ${JSON.stringify(video.channel)}`,
+    // sv-SE locale 恰好输出 YYYY-MM-DD，且按本地时区
+    `date: ${new Date().toLocaleDateString('sv')}`,
     '---', '',
     `# ${video.title}`, '',
   ];

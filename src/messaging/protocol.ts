@@ -16,6 +16,8 @@ export type Msg =
   | { type: 'SAVE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'CAPTURE_NOW' }
   | { type: 'LIST_LIBRARY' }
-  | { type: 'OPEN_NOTE_EDITOR'; start: number; end: number; excerpt: string };
+  | { type: 'OPEN_NOTE_EDITOR'; start: number; end: number; excerpt: string }
+  | { type: 'TRANSCRIPT_FAILED'; videoId: string; reason: string }
+  | { type: 'RETRY_TRANSCRIPT' };
 
 export interface VideoData { video: VideoMeta | null; cues: Cue[]; notes: Note[]; summary: Summary | null; }

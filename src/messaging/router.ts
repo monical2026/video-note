@@ -30,7 +30,14 @@ export interface RouterDeps {
 export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
-      const { cues } = await deps.getTranscriptWithFallback({ videoId: msg.meta.videoId, tracks: msg.tracks });
+      let cues;
+      try {
+        ({ cues } = await deps.getTranscriptWithFallback({ videoId: msg.meta.videoId, tracks: msg.tracks }));
+      } catch (e) {
+        // 无字幕/双通道均失败：广播给侧边栏展示错误条，可手动重试
+        deps.broadcast({ type: 'TRANSCRIPT_FAILED', videoId: msg.meta.videoId, reason: e instanceof Error ? e.message : String(e) });
+        return { error: e instanceof Error ? e.message : String(e) };
+      }
       // 润色：开关开启且已配 LLM 则先润色再落库；失败静默跳过，用原字幕
       let final = cues;
       const s = await deps.getSettings();
@@ -96,6 +103,10 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     case 'SAVE_SETTINGS': await deps.saveSettings(msg.patch); return { ok: true };
     case 'SEEK': deps.sendToActiveTab(msg); return { ok: true };
     case 'CAPTURE_NOW': deps.sendToActiveTab(msg); return { ok: true };
+    // content 直发的心跳/编辑器消息到达 background：静默放行，不再落「未知消息」
+    case 'PLAYBACK': return { ok: true };
+    case 'OPEN_NOTE_EDITOR': return { ok: true };
+    case 'RETRY_TRANSCRIPT': deps.sendToActiveTab(msg); return { ok: true };
     default: throw new Error(`未知消息: ${(msg as any).type}`);
   }
 }

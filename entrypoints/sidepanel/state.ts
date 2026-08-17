@@ -7,6 +7,7 @@ export const notes = signal<Note[]>([]);
 export const summary = signal<Summary | null>(null);
 export const settings = signal<Settings | null>(null);
 export const currentTime = signal(0);
+export const transcriptError = signal<string>('');
 export const activeTab = signal<'transcript' | 'notes' | 'summary' | 'library' | 'settings'>('transcript');
 export const noteEditorCtx = signal<{ start: number; end: number; excerpt: string } | null>(null);
 

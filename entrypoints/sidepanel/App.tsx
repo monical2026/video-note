@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, videoInfo } from './state';
+import { activeTab, cues, currentTime, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -36,8 +36,9 @@ export function App() {
     const listener = (msg: any, sender: any) => {
       if (msg.type === 'PLAYBACK') currentTime.value = msg.t;
       if (msg.type === 'OPEN_NOTE_EDITOR') noteEditorCtx.value = msg;
+      if (msg.type === 'TRANSCRIPT_FAILED') transcriptError.value = msg.reason;
       // 仅接受 background 处理完成后的广播（sender 无 tab）；忽略 content script 发来的原始未处理消息
-      if (msg.type === 'PAGE_INFO' && !sender?.tab) loadVideoData(msg.meta.videoId);
+      if (msg.type === 'PAGE_INFO' && !sender?.tab) { transcriptError.value = ''; loadVideoData(msg.meta.videoId); }
     };
     browser.runtime.onMessage.addListener(listener);
     return () => browser.runtime.onMessage.removeListener(listener);
@@ -69,6 +70,12 @@ export function App() {
         </nav>
       </header>
       <main>
+        {tab === 'transcript' && transcriptError.value && (
+          <div class="err">
+            <span>字幕获取失败：{transcriptError.value}</span>
+            <button onClick={() => { transcriptError.value = ''; sendMsg({ type: 'RETRY_TRANSCRIPT' }); }}>重试</button>
+          </div>
+        )}
         {tab === 'transcript' && (
           <div class="translate-bar">
             <span>未翻译句数 {pendingCount}</span>

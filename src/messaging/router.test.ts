@@ -33,6 +33,25 @@ describe('router', () => {
     expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
   });
 
+  it('PAGE_INFO 抓取失败时广播 TRANSCRIPT_FAILED 并返回 error', async () => {
+    const d = deps({ getTranscriptWithFallback: vi.fn(async () => { throw new Error('无可用字幕通道'); }) });
+    const r = await handleMessage({ type: 'PAGE_INFO', tracks: [], meta: { videoId: 'v', title: 'T', channel: 'C' } }, d);
+    expect(d.broadcast).toHaveBeenCalledWith({ type: 'TRANSCRIPT_FAILED', videoId: 'v', reason: '无可用字幕通道' });
+    expect(r).toEqual({ error: '无可用字幕通道' });
+    expect(d.saveVideo).not.toHaveBeenCalled();
+  });
+
+  it('RETRY_TRANSCRIPT 转发给当前标签页的 content script', async () => {
+    const d = deps();
+    await handleMessage({ type: 'RETRY_TRANSCRIPT' }, d);
+    expect(d.sendToActiveTab).toHaveBeenCalledWith({ type: 'RETRY_TRANSCRIPT' });
+  });
+
+  it('PLAYBACK / OPEN_NOTE_EDITOR 静默放行不抛错', async () => {
+    await expect(handleMessage({ type: 'PLAYBACK', t: 1 }, deps())).resolves.toEqual({ ok: true });
+    await expect(handleMessage({ type: 'OPEN_NOTE_EDITOR', start: 0, end: 1, excerpt: '' }, deps())).resolves.toEqual({ ok: true });
+  });
+
   it('EXPLAIN 用字幕窗口调用 explainConfusion 并返回解释', async () => {
     const d = deps();
     const r = await handleMessage({ type: 'EXPLAIN', videoId: 'v', start: 8, end: 12 }, d);

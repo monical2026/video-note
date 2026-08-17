@@ -14,7 +14,12 @@ export function LibraryView(props: { currentVideoId: string }) {
   if (openVideo) return (
     <div>
       <button class="back" onClick={() => setOpenVideo(null)}>← 返回</button>
-      <NotesView notes={openNotes} videoId={openVideo.video.videoId} currentVideoId={props.currentVideoId} />
+      <NotesView notes={openNotes} videoId={openVideo.video.videoId} currentVideoId={props.currentVideoId}
+        onNotesChanged={async () => {
+          // 本地刷新：不触碰全局 signals，避免把面板切到历史视频
+          const d = await sendMsg<{ notes: Note[] }>({ type: 'GET_VIDEO_DATA', videoId: openVideo.video.videoId });
+          setOpenNotes(d.notes);
+        }} />
     </div>
   );
   const filtered = rows.filter((r) => r.video.title.toLowerCase().includes(q.toLowerCase()));

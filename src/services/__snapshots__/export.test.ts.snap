@@ -2,9 +2,9 @@
 
 exports[`格式快照 1`] = `
 "---
-title: Closures Explained
-source: https://youtube.com/watch?v=abc
-channel: Dev
+title: "Closures Explained"
+source: "https://youtube.com/watch?v=abc"
+channel: "Dev"
 date: 2026-08-17
 ---
 

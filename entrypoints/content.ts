@@ -38,6 +38,8 @@ export default defineContentScript({
         // 摘录当前句前后 ±1 句：由 background 持有字幕，这里只报时间，面板负责组稿
         browser.runtime.sendMessage({ type: 'OPEN_NOTE_EDITOR', start: t - 5, end: t + 5, excerpt: '' } satisfies Msg).catch(() => {});
       }
+      // 面板重试：重置去重标记后重新抓取当前页
+      if (msg.type === 'RETRY_TRANSCRIPT') { lastVideoId = ''; onPageChange(); }
     });
 
     // SPA 导航监听 + 首次进入
