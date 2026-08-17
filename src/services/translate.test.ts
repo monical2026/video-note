@@ -13,7 +13,7 @@ it('调度器并发执行、写入 zh、统计失败', async () => {
 });
 
 it('googleFreeTranslate 拼接响应片段', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => [[[null, '你'], [null, '好']], null, 'en'] }) as any));
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => [[['你', 'hel', null, null, 10], ['好', 'lo', null, null, 10]], null, 'en'] }) as any));
   expect(await googleFreeTranslate('hello')).toBe('你好');
   vi.unstubAllGlobals();
 });

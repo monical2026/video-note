@@ -6,7 +6,7 @@ export async function googleFreeTranslate(text: string): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`translate ${res.status}`);
   const data = await res.json();
-  return (data[0] ?? []).map((seg: any[]) => seg[0] ?? seg[1] ?? '').join('');
+  return (data[0] ?? []).map((seg: any[]) => typeof seg?.[0] === 'string' ? seg[0] : '').join('');
 }
 
 /** 并发调度翻译整篇字幕：单句失败不中断，连续失败自动降速（限流退避） */
