@@ -25,7 +25,11 @@ export function NoteEditor() {
           <button class={type === 'value' ? 'on' : ''} onClick={() => setType('value')}>⭐ 有价值</button>
           <button class={type === 'confusion' ? 'on' : ''} onClick={() => setType('confusion')}>❓ 有疑惑</button>
         </div>
-        <div class="meta">[{formatTime(ctx.start)}] 「{excerpt.slice(0, 120)}{excerpt.length > 120 ? '…' : ''}」</div>
+        <div class="meta">
+          {excerpt
+            ? `[${formatTime(ctx.start)}] 「${excerpt.slice(0, 120)}${excerpt.length > 120 ? '…' : ''}」`
+            : `⏱ 当前播放位置 · [${formatTime(ctx.start)}]（无字幕摘录）`}
+        </div>
         <textarea placeholder="写批注…" value={annotation} onInput={(e) => setAnnotation((e.target as HTMLTextAreaElement).value)} rows={4} />
         <div class="row">
           <button onClick={() => (noteEditorCtx.value = null)}>取消</button>

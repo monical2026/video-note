@@ -46,3 +46,54 @@ it('点击整行触发 onSeek；有文字选区时点击不触发', () => {
   vi.unstubAllGlobals();
   unmount();
 });
+
+it('划选两行（含反向选择）按起止行定位，onSelect 收到对应 cues', () => {
+  const onSelect = vi.fn();
+  const { getByTestId, unmount } = render(
+    <TranscriptView cues={cues} videoId="v" currentTime={0} mode="bilingual" onSeek={() => {}} onSelect={onSelect} />,
+  );
+  const cue0 = getByTestId('cue-0');
+  const cue1 = getByTestId('cue-1');
+  const text0 = cue0.querySelector('.en')!.firstChild!;
+  const text1 = cue1.querySelector('.en')!.firstChild!;
+  const stub = (anchorNode: Node, focusNode: Node) =>
+    vi.stubGlobal('getSelection', () => ({ isCollapsed: false, toString: () => 'hello world', anchorNode, focusNode }));
+  // 正向：行0 → 行1
+  stub(text0, text1);
+  fireEvent.mouseUp(cue1);
+  expect(onSelect).toHaveBeenCalledWith(cues);
+  // 反向：行1 → 行0，仍取 [0,1]
+  onSelect.mockClear();
+  stub(text1, text0);
+  fireEvent.mouseUp(cue0);
+  expect(onSelect).toHaveBeenCalledWith(cues);
+  vi.unstubAllGlobals();
+  unmount();
+});
+
+it('选区不在字幕行内时不触发 onSelect', () => {
+  const onSelect = vi.fn();
+  const { getByTestId, unmount } = render(
+    <TranscriptView cues={cues} videoId="v" currentTime={0} mode="bilingual" onSeek={() => {}} onSelect={onSelect} />,
+  );
+  const outside = document.createElement('div');
+  document.body.appendChild(outside);
+  vi.stubGlobal('getSelection', () => ({ isCollapsed: false, toString: () => 'x', anchorNode: outside, focusNode: outside }));
+  fireEvent.mouseUp(getByTestId('cue-0'));
+  expect(onSelect).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+  outside.remove();
+  unmount();
+});
+
+it('折叠选区（仅点击无划选）不触发 onSelect', () => {
+  const onSelect = vi.fn();
+  const { getByTestId, unmount } = render(
+    <TranscriptView cues={cues} videoId="v" currentTime={0} mode="bilingual" onSeek={() => {}} onSelect={onSelect} />,
+  );
+  vi.stubGlobal('getSelection', () => ({ isCollapsed: true, toString: () => '', anchorNode: null, focusNode: null }));
+  fireEvent.mouseUp(getByTestId('cue-0'));
+  expect(onSelect).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+  unmount();
+});

@@ -73,6 +73,11 @@ export function App() {
     }
   }, [currentVideoId, pendingCount, translating, settings.value]);
 
+  // 无字幕视频的笔记入口：以当前播放位置为窗口打开编辑器（excerpt 为空合法）
+  const noteHere = () => {
+    noteEditorCtx.value = { start: currentTime.value, end: currentTime.value + 10, excerpt: '' };
+  };
+
   const tab = activeTab.value;
   return (
     <div class="app">
@@ -113,6 +118,12 @@ export function App() {
           {settings.value?.translateChannel === 'free' && !settings.value.llm && (
             <div class="translate-hint">免费通道逐句翻译较慢、术语有限。配置 LLM key 可大幅提速提质 → ⚙️</div>
           )}
+          {cues.value.length === 0 && (
+            <div class="empty" data-testid="transcript-empty">
+              <span>本视频没有逐字稿（或获取失败）</span>
+              <button onClick={noteHere}>📝 在当前播放位置记笔记</button>
+            </div>
+          )}
           </>
         )}
         {tab === 'transcript' && <TranscriptView
@@ -126,7 +137,7 @@ export function App() {
             noteEditorCtx.value = { start: sel[0]!.start, end: last.start + last.dur, excerpt: sel.map((c) => c.text).join(' ') };
           }}
         />}
-        {tab === 'notes' && <NotesView notes={notes.value} videoId={videoInfo.value?.videoId ?? ''} currentVideoId={videoInfo.value?.videoId ?? ''} />}
+        {tab === 'notes' && <NotesView notes={notes.value} videoId={videoInfo.value?.videoId ?? ''} currentVideoId={videoInfo.value?.videoId ?? ''} onNoteHere={noteHere} />}
         {tab === 'summary' && <SummaryView
           summary={summary.value} llmConfigured={!!settings.value?.llm}
           videoId={videoInfo.value?.videoId ?? ''} onSeek={(t) => sendMsg({ type: 'SEEK', t })}

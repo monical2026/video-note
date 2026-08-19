@@ -18,13 +18,26 @@ export function TranscriptView(props: {
     return props.currentTime >= c.start && (!next || props.currentTime < next.start);
   };
   const onMouseUp = () => {
-    const sel = window.getSelection()?.toString().trim();
-    if (sel) props.onSelect(props.cues.filter((c) => sel.includes(c.text.slice(0, 10)) || (sel && c.text.includes(sel.slice(0, 10)))));
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (!sel || sel.isCollapsed || !text) return;
+    // 按 Selection 的起止 DOM 节点定位 cue 行（可靠，支持跨行与反向选择）
+    const idxOf = (node: Node | null): number | null => {
+      const el = node?.nodeType === 3 ? node.parentElement : (node as HTMLElement | null);
+      const cue = el?.closest?.('.cue') as HTMLElement | null;
+      const i = cue?.getAttribute('data-index');
+      return i == null ? null : Number(i);
+    };
+    let a = idxOf(sel.anchorNode), b = idxOf(sel.focusNode);
+    if (a == null || b == null) return;           // 选区不在字幕行内
+    const [from, to] = a <= b ? [a, b] : [b, a];
+    const picked = props.cues.slice(from, to + 1);
+    if (picked.length) props.onSelect(picked);
   };
   return (
     <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}>
       {props.cues.map((c, i) => (
-        <div key={i} data-testid={`cue-${i}`} class={`cue ${isCurrent(c, i) ? 'active' : ''}`}
+        <div key={i} data-testid={`cue-${i}`} data-index={i} class={`cue ${isCurrent(c, i) ? 'active' : ''}`}
           onClick={() => { if (window.getSelection()?.toString()) return; props.onSeek(c.start); }}>
           <button data-testid={`ts-${i}`} class="ts" onClick={(e) => { e.stopPropagation(); props.onSeek(c.start); }}>{formatTime(c.start)}</button>
           {props.mode !== 'zh' && <div class="en">{c.text}</div>}

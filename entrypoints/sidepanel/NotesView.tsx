@@ -12,7 +12,7 @@ export function noteMarkdown(n: Note): string {
   return lines.join('\n');
 }
 
-export function NotesView(props: { notes: Note[]; videoId: string; currentVideoId: string; onNotesChanged?: () => void }) {
+export function NotesView(props: { notes: Note[]; videoId: string; currentVideoId: string; onNotesChanged?: () => void; onNoteHere?: () => void }) {
   const [copiedId, setCopiedId] = useState('');
   const copy = async (n: Note) => {
     await navigator.clipboard.writeText(noteMarkdown(n));
@@ -42,7 +42,12 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
       setExplainingId('');
     }
   };
-  if (!props.notes.length) return <div class="empty">本视频还没有笔记——选中字幕或按快捷键开始记录</div>;
+  if (!props.notes.length) return (
+    <div class="empty">
+      本视频还没有笔记——选中字幕或按快捷键开始记录
+      {props.onNoteHere && <button onClick={props.onNoteHere}>📝 在当前播放位置记笔记</button>}
+    </div>
+  );
   const exportMd = async (notesOnly: boolean, includeTranscript: boolean) => {
     const r = await sendMsg<{ markdown: string }>({ type: 'EXPORT', videoId: props.videoId, notesOnly, includeTranscript });
     const url = URL.createObjectURL(new Blob([r.markdown], { type: 'text/markdown' }));
