@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/preact';
 import { SettingsView } from './SettingsView';
+import type { Settings } from '../../src/types';
 
 const baseSettings = { displayMode: 'bilingual' as const, translateChannel: 'free' as const, llm: null, supadataKey: '', polishEnabled: false };
 
@@ -23,4 +24,36 @@ it('点击智谱预设后自动填入 baseUrl 与 model', async () => {
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
     llm: expect.objectContaining({ baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' }),
   }));
+});
+
+it('多服务商 key 记忆：切换预设自动带出已存的 key', async () => {
+  const onSave = vi.fn();
+  const { getByText, getByPlaceholderText } = render(<SettingsView settings={{ ...baseSettings }} onSave={onSave} />);
+  const keyInput = getByPlaceholderText('sk-…（仅存本机）') as HTMLInputElement;
+
+  // 1. 填智谱 key 并保存
+  fireEvent.click(getByText('智谱'));
+  fireEvent.input(keyInput, { target: { value: 'zhipu-key-1' } });
+  fireEvent.click(getByText('保存设置'));
+  const saved1 = onSave.mock.calls[0]![0] as Settings;
+  expect(saved1.llmKeys).toEqual({ zhipu: 'zhipu-key-1' });
+
+  // 2. 切到 DeepSeek：智谱 key 已存、apiKey 变空
+  fireEvent.click(getByText('DeepSeek'));
+  expect(keyInput.value).toBe('');
+  // 3. 填 DeepSeek key 后切回智谱：自动带出智谱 key
+  fireEvent.input(keyInput, { target: { value: 'deepseek-key-1' } });
+  fireEvent.click(getByText('智谱'));
+  expect(keyInput.value).toBe('zhipu-key-1');
+});
+
+it('API Key 清空小叉：点击后清空并可重新输入', async () => {
+  const onSave = vi.fn();
+  const { getByTitle, getByPlaceholderText } = render(
+    <SettingsView settings={{ ...baseSettings, llm: { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-old', model: 'deepseek-chat' } }} onSave={onSave} />,
+  );
+  const keyInput = getByPlaceholderText('sk-...') as HTMLInputElement;
+  expect(keyInput.value).toBe('sk-old');
+  fireEvent.click(getByTitle('清空'));
+  expect(keyInput.value).toBe('');
 });

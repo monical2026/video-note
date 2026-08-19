@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { Settings } from '../../src/types';
 
 // 常用 LLM 服务商预设：一键填充 baseUrl + model，避免手填出错
@@ -11,18 +11,42 @@ const PRESETS = [
 const emptyLlm = { baseUrl: '', apiKey: '', model: '' };
 const DEFAULT_KEY_HINT = 'sk-…（仅存本机）';
 
+type Provider = 'zhipu' | 'deepseek' | 'openai' | null;
+
+/** 根据 baseUrl 判定服务商：用于 key 记忆槽位；自定义地址返回 null（不记忆） */
+const detectProvider = (baseUrl: string | undefined): Provider => {
+  const u = baseUrl ?? '';
+  if (u.startsWith('https://open.bigmodel.cn')) return 'zhipu';
+  if (u.startsWith('https://api.deepseek.com')) return 'deepseek';
+  if (u.startsWith('https://api.openai.com')) return 'openai';
+  return null;
+};
+
 export function SettingsView(props: { settings: Settings; onSave: (patch: Partial<Settings>) => void }) {
   const [s, setS] = useState<Settings>(props.settings);
   const [testResult, setTestResult] = useState('');
   const [saved, setSaved] = useState(false);
+  const apiKeyRef = useRef<HTMLInputElement>(null);
 
   const setLlm = (patch: Partial<typeof emptyLlm>) =>
     setS({ ...s, llm: { ...(s.llm ?? emptyLlm), ...patch } });
 
-  const applyPreset = (p: typeof PRESETS[number]) => setLlm({ baseUrl: p.baseUrl, model: p.model });
+  const applyPreset = (p: typeof PRESETS[number]) => {
+    const provider = p.name === '智谱' ? 'zhipu' : p.name === 'DeepSeek' ? 'deepseek' : 'openai';
+    // 先把当前非空 key 存入当前 provider 槽位（自定义地址不记忆）
+    const cur = detectProvider(s.llm?.baseUrl);
+    const keys = { ...(s.llmKeys ?? {}) };
+    if (cur && s.llm?.apiKey) keys[cur] = s.llm.apiKey;
+    setS({ ...s, llmKeys: keys, llm: { baseUrl: p.baseUrl, model: p.model, apiKey: keys[provider] ?? '' } });
+  };
 
   const save = () => {
-    props.onSave(s);
+    // 当前 provider 的 key 同步进记忆槽位后随整份 settings 保存
+    const cur = detectProvider(s.llm?.baseUrl);
+    const toSave = cur && s.llm?.apiKey
+      ? { ...s, llmKeys: { ...(s.llmKeys ?? {}), [cur]: s.llm.apiKey } }
+      : s;
+    props.onSave(toSave);
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -78,6 +102,7 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
             <button class="ghost" key={p.name} onClick={() => applyPreset(p)}>{p.name}</button>
           ))}
         </div>
+        <span class="hint-line">各服务商的 API Key 会分别记住，切换预设自动带出</span>
         <label class="field">
           <span class="label">Base URL</span>
           <span class="hint-line">完整地址，到 /v1 或 /api/paas/v4</span>
@@ -85,7 +110,12 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
         </label>
         <label class="field">
           <span class="label">API Key</span>
-          <input type="password" placeholder={presetKeyHint} value={s.llm?.apiKey ?? ''} onInput={(e) => setLlm({ apiKey: (e.target as HTMLInputElement).value })} />
+          <span class="key-input-wrap">
+            <input ref={apiKeyRef} type="password" placeholder={presetKeyHint} value={s.llm?.apiKey ?? ''} onInput={(e) => setLlm({ apiKey: (e.target as HTMLInputElement).value })} />
+            {s.llm?.apiKey ? (
+              <button type="button" class="clear-btn" title="清空" onClick={() => { setLlm({ apiKey: '' }); apiKeyRef.current?.focus(); }}>×</button>
+            ) : null}
+          </span>
         </label>
         <label class="field">
           <span class="label">模型名</span>
