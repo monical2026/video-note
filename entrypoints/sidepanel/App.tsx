@@ -46,7 +46,22 @@ export function App() {
 
   // 免费通道自动翻译：cues 非空且全部无译文时，每个视频自动触发一次
   const pendingCount = cues.value.filter((c) => !c.zh).length;
+  const total = cues.value.length;
+  const done = total - pendingCount;
   const currentVideoId = videoInfo.value?.videoId ?? '';
+
+  // 翻译进度轮询：翻译中每 3s 刷新已翻数量；pending 清零或 5 分钟自动停；卸载即清
+  useEffect(() => {
+    if (!translating || !currentVideoId) return;
+    const startAt = Date.now();
+    const timer = setInterval(async () => {
+      if (Date.now() - startAt > 5 * 60 * 1000) { clearInterval(timer); return; }
+      await loadVideoData(currentVideoId);
+      if (cues.value.every((c) => c.zh)) clearInterval(timer);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [translating, currentVideoId]);
+
   useEffect(() => {
     if (
       !translating && currentVideoId && autoTranslatedFor.current !== currentVideoId &&
@@ -88,12 +103,17 @@ export function App() {
           </div>
         )}
         {tab === 'transcript' && (
+          <>
           <div class="translate-bar">
-            <span>未翻译句数 {pendingCount}</span>
+            <span>{translating ? `翻译中… 已翻 ${done}/${total}` : `未翻译句数 ${pendingCount}`}</span>
             <button disabled={!currentVideoId || translating || !pendingCount} onClick={() => triggerTranslate(currentVideoId)}>
               {translating ? '翻译中…' : '翻译'}
             </button>
           </div>
+          {settings.value?.translateChannel === 'free' && !settings.value.llm && (
+            <div class="translate-hint">免费通道逐句翻译较慢、术语有限。配置 LLM key 可大幅提速提质 → ⚙️</div>
+          )}
+          </>
         )}
         {tab === 'transcript' && <TranscriptView
           cues={cues.value} videoId={videoInfo.value?.videoId ?? ''} currentTime={currentTime.value}

@@ -71,7 +71,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         const zh = await deps.llmTranslateBatch(s.llm, texts);
         out = { translated: pending.map((c, i) => ({ ...c, zh: zh[i] })), failed: 0 };
       } else {
-        out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 5 });
+        out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
       await deps.saveTranscript(msg.videoId, merged);

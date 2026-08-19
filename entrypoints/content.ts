@@ -114,10 +114,12 @@ export default defineContentScript({
     }
 
     // 播放进度：500ms 节流广播
+    // 不取整秒：字幕 start 是浮点（如 103.28），SEEK 后若广播 Math.floor 值（103），
+    // 面板 isCurrent 判定 103 >= 103.28 为假，高亮会落在上一行；改用 0.1s 粒度对齐
     setInterval(() => {
       const v = getVideo();
       if (!v) return;
-      const t = Math.floor(v.currentTime);
+      const t = Math.round(v.currentTime * 10) / 10;
       if (t !== lastTimeSent) { lastTimeSent = t; browser.runtime.sendMessage({ type: 'PLAYBACK', t } satisfies Msg).catch(() => {}); }
     }, 500);
 
