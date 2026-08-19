@@ -10,7 +10,7 @@ export default defineConfig({
     host_permissions: ['https://www.youtube.com/*', 'https://api.supadata.ai/*', 'https://translate.googleapis.com/*'],
     optional_host_permissions: ['https://*/*'], // 用户自定义 LLM base URL
     commands: {
-      'capture-note': { suggested_key: { default: 'Alt+Shift+N' }, description: '截取当前片段记笔记' },
+      'capture-note': { suggested_key: { default: 'Ctrl+Shift+L' }, description: '截取当前片段记笔记' },
     },
     side_panel: { default_path: 'sidepanel.html' },
     // content_scripts 由 entrypoints/content.ts 的 defineContentScript({ matches: ['https://www.youtube.com/*'] })

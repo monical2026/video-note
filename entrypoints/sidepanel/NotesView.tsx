@@ -42,12 +42,6 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
       setExplainingId('');
     }
   };
-  if (!props.notes.length) return (
-    <div class="empty">
-      本视频还没有笔记——选中字幕或按快捷键开始记录
-      {props.onNoteHere && <button onClick={props.onNoteHere}>📝 在当前播放位置记笔记</button>}
-    </div>
-  );
   const exportMd = async (notesOnly: boolean, includeTranscript: boolean) => {
     const r = await sendMsg<{ markdown: string }>({ type: 'EXPORT', videoId: props.videoId, notesOnly, includeTranscript });
     const url = URL.createObjectURL(new Blob([r.markdown], { type: 'text/markdown' }));
@@ -55,8 +49,24 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
     a.href = url; a.download = `${props.videoId}-notes.md`; a.click();
     URL.revokeObjectURL(url);
   };
+  // 顶部常驻工具栏：记笔记入口 + 导出组（记完一条后仍有入口）
+  const toolbar = (
+    <div class="notes-toolbar">
+      {props.onNoteHere && <button class="primary" onClick={props.onNoteHere}>📝 记笔记</button>}
+      <button class="primary" onClick={() => exportMd(false, false)}>导出 Markdown</button>
+      <button class="ghost" onClick={() => exportMd(true, false)}>仅笔记</button>
+      <button class="ghost" onClick={() => exportMd(false, true)}>含逐字稿</button>
+    </div>
+  );
+  if (!props.notes.length) return (
+    <div class="notes">
+      {toolbar}
+      <div class="empty">本视频还没有笔记——点上方 📝 记笔记、按 Ctrl+Shift+L，或在逐字稿上划选</div>
+    </div>
+  );
   return (
     <div class="notes">
+      {toolbar}
       {props.notes.map((n) => (
         <div key={n.id} class="note">
           <button class="ts" onClick={() => jump(n)}>{formatTime(n.start)}</button>
@@ -76,11 +86,6 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
           </div>
         </div>
       ))}
-      <div class="export">
-        <button class="primary" onClick={() => exportMd(false, false)}>导出 Markdown</button>
-        <button onClick={() => exportMd(true, false)}>仅笔记</button>
-        <button onClick={() => exportMd(false, true)}>含逐字稿</button>
-      </div>
     </div>
   );
 }
