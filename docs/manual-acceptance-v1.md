@@ -7,7 +7,7 @@
 - [ ] 点时间戳视频跳转
 - [ ] 未配置任何 key 时：免费翻译自动/手动触发，进度可见，译文出现
 - [ ] 选中字幕若干句 → 浮出/弹出记笔记 → 选⭐保存 → 笔记 Tab 出现
-- [ ] Ctrl+Shift+L 快捷键 → 当前时间 ±5s 进入笔记编辑（可在 chrome://extensions/shortcuts 自定义改键）
+- [ ] Alt+N 快捷键 → 当前时间 ±5s 进入笔记编辑（Mac 为 Option+N；若无效去 chrome://extensions/shortcuts 手动设置——扩展更新后 Chrome 不自动应用新默认键，可在该页自定义改键）
 - [ ] 记一条 ❓疑惑 → 点「AI 解释」（需已配 LLM）→ 解释可保存
 - [ ] AI 摘要 Tab 生成（需 LLM）→ 结构四段完整、时间戳可点
 - [ ] 单条笔记复制 → 粘贴出 markdown 格式正确

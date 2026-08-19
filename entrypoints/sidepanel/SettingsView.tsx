@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Settings } from '../../src/types';
 
 // 常用 LLM 服务商预设：一键填充 baseUrl + model，避免手填出错
@@ -27,6 +27,22 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
   const [testResult, setTestResult] = useState('');
   const [saved, setSaved] = useState(false);
   const apiKeyRef = useRef<HTMLInputElement>(null);
+  // 当前快捷键实际绑定：Chrome 不会自动应用 manifest 更新后的新默认键，需展示真实状态
+  const [shortcut, setShortcut] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const cmds = await (browser as any).commands.getAll();
+        const cmd = (cmds as any[])?.find((c) => c.name === 'capture-note');
+        if (alive) setShortcut(cmd?.shortcut || '');
+      } catch {
+        if (alive) setShortcut(null); // 读取失败（环境不支持）
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const setLlm = (patch: Partial<typeof emptyLlm>) =>
     setS({ ...s, llm: { ...(s.llm ?? emptyLlm), ...patch } });
@@ -136,6 +152,16 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
       <section class="settings-card">
         <h3>其他</h3>
         <label class="check"><input type="checkbox" checked={s.polishEnabled} onChange={(e) => setS({ ...s, polishEnabled: (e.target as HTMLInputElement).checked })} /> LLM 纠错润色字幕（修正术语与标点）</label>
+        <div class="field">
+          <span class="label">截取片段快捷键</span>
+          <span class="hint-line">
+            {shortcut === null
+              ? '当前绑定：无法读取（点下方按钮去浏览器设置页查看）'
+              : shortcut
+                ? `当前绑定：${shortcut}`
+                : '当前绑定：未设置 ⚠️ 请点击下方按钮设置'}
+          </span>
+        </div>
         <button class="ghost" onClick={() => browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>修改快捷键（浏览器管理页）</button>
         <p class="hint-line">密钥仅存储于本机浏览器（chrome.storage.local），请求直达对应服务，不经过第三方。走 Supadata 时视频 URL 会发送至其服务器。</p>
       </section>

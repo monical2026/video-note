@@ -82,7 +82,6 @@ export function App() {
   return (
     <div class="app">
       <header>
-        <span class="title">{videoInfo.value?.title ?? 'Video Note'}</span>
         <nav>
           {TABS.map(([id, label]) => (
             <button key={id} class={tab === id ? 'on' : ''} onClick={() => (activeTab.value = id)}>{label}</button>
@@ -90,6 +89,7 @@ export function App() {
         </nav>
       </header>
       <main>
+        {videoInfo.value && <h1 class="video-title">{videoInfo.value.title}</h1>}
         {tab === 'transcript' && transcriptError.value && (
           <div class="err">
             <span>字幕获取失败：{transcriptError.value}</span>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/preact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, fireEvent, waitFor } from '@testing-library/preact';
 import { SettingsView } from './SettingsView';
 import type { Settings } from '../../src/types';
 
@@ -56,4 +56,14 @@ it('API Key 清空小叉：点击后清空并可重新输入', async () => {
   expect(keyInput.value).toBe('sk-old');
   fireEvent.click(getByTitle('清空'));
   expect(keyInput.value).toBe('');
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('展示 capture-note 快捷键的当前实际绑定', async () => {
+  vi.stubGlobal('browser', {
+    commands: { getAll: vi.fn(async () => [{ name: 'capture-note', shortcut: 'Alt+N' }]) },
+  });
+  const { getByText } = render(<SettingsView settings={{ ...baseSettings }} onSave={vi.fn()} />);
+  await waitFor(() => expect(getByText('当前绑定：Alt+N')).toBeTruthy());
 });
