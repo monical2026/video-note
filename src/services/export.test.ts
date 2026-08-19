@@ -39,3 +39,11 @@ it('includeTranscript 附加附录', () => {
 it('格式快照', () => {
   expect(buildFusedMarkdown({ video, notes, summary })).toMatchSnapshot();
 });
+
+it('excerptZh 出现在摘录行后', () => {
+  const withZh: Note[] = [{ ...notes[0]!, excerptZh: '闭包捕获状态' }];
+  const md = buildFusedMarkdown({ video, notes: withZh });
+  expect(md).toContain('> 「closures capture state」\n> 闭包捕获状态');
+  // 旧笔记无 excerptZh 正常
+  expect(buildFusedMarkdown({ video, notes })).not.toContain('undefined');
+});

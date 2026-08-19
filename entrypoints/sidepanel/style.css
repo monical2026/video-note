@@ -55,3 +55,5 @@ button.primary:hover { background: #0860c4; }
 /* ===== 笔记编辑器：摘录中英对照与可编辑 ===== */
 .excerpt-zh { font-size: 11px; color: #57606a; margin: 2px 0 6px; }
 .excerpt-edit { width: 100%; font-size: 13px; padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; font-family: inherit; }
+
+.danger { color: #cf222e; }

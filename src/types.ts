@@ -8,6 +8,7 @@ export interface Note {
   excerpt: string;           // 原文摘录（英文）
   annotation: string;        // 用户批注
   type: NoteType;
+  excerptZh?: string;        // 摘录的中文对照（来自字幕翻译）
   aiExplanation?: string;    // 疑惑的 AI 解释（可编辑）
   createdAt: number;
 }

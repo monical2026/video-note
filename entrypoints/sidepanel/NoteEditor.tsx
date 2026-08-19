@@ -18,7 +18,7 @@ export function NoteEditor() {
     const videoId = videoInfo.value?.videoId ?? '';
     await sendMsg({ type: 'SAVE_NOTE', note: {
       id: crypto.randomUUID(), videoId,
-      start: ctx.start, end: ctx.end, excerpt, annotation, type, createdAt: Date.now(),
+      start: ctx.start, end: ctx.end, excerpt, excerptZh: zhText || undefined, annotation, type, createdAt: Date.now(),
     } });
     noteEditorCtx.value = null;
     await loadVideoData(videoId); // 刷新笔记列表

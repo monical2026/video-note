@@ -5,6 +5,7 @@ const noteBlock = (videoId: string, n: Note): string => {
   const icon = n.type === 'value' ? '⭐ **我的笔记**' : '❓ **我的疑惑**';
   const lines = [`> ${icon} · [${formatTime(n.start)}](${tsLink(videoId, n.start)})`, `> ${n.annotation}`];
   if (n.excerpt) lines.push(`> 「${n.excerpt}」`);
+  if (n.excerptZh) lines.push('> ' + n.excerptZh);
   if (n.aiExplanation) lines.push('> 🤖 **AI 解释**：' + n.aiExplanation);
   return lines.join('\n');
 };

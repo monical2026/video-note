@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState, useRef } from 'preact/hooks';
 import type { Note } from '../../src/types';
 import { formatTime, tsLink } from '../../src/utils/time';
 import { sendMsg, loadVideoData } from './state';
@@ -8,6 +8,7 @@ export function noteMarkdown(n: Note): string {
   const icon = n.type === 'value' ? '⭐ **我的笔记**' : '❓ **我的疑惑**';
   const lines = [`${icon} · [${formatTime(n.start)}](${tsLink(n.videoId, n.start)})`, n.annotation];
   if (n.excerpt) lines.push(`「${n.excerpt}」`);
+  if (n.excerptZh) lines.push(n.excerptZh);
   if (n.aiExplanation) lines.push('🤖 **AI 解释**：' + n.aiExplanation);
   return lines.join('\n');
 }
@@ -23,6 +24,24 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
     else browser.tabs.create({ url: tsLink(n.videoId, n.start) });
   };
   const [explainingId, setExplainingId] = useState('');
+  // 两段式删除：confirmDeleteId 为当前进入确认态的笔记 id
+  const [confirmDeleteId, setConfirmDeleteId] = useState('');
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => clearConfirmTimer, []); // 卸载时清理定时器
+  const clearConfirmTimer = () => { if (confirmTimer.current) { clearTimeout(confirmTimer.current); confirmTimer.current = null; } };
+  const onDelete = async (n: Note) => {
+    if (confirmDeleteId !== n.id) {
+      setConfirmDeleteId(n.id);
+      clearConfirmTimer();
+      confirmTimer.current = setTimeout(() => setConfirmDeleteId(''), 3000); // 3 秒未确认自动恢复
+      return;
+    }
+    clearConfirmTimer();
+    setConfirmDeleteId('');
+    await sendMsg({ type: 'DELETE_NOTE', id: n.id });
+    if (props.onNotesChanged) props.onNotesChanged();
+    else await loadVideoData(props.videoId);
+  };
   const [explainError, setExplainError] = useState<{ id: string; msg: string } | null>(null);
   const explain = async (n: Note) => {
     setExplainingId(n.id);
@@ -73,10 +92,14 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
           <span class={`tag ${n.type}`}>{n.type === 'value' ? '⭐' : '❓'}</span>
           <div class="annotation">{n.annotation}</div>
           {n.excerpt && <div class="excerpt">「{n.excerpt}」</div>}
+          {n.excerptZh && <div class="excerpt-zh">{n.excerptZh}</div>}
           {n.aiExplanation && <div class="ai">🤖 {n.aiExplanation}</div>}
           <div class="ops">
             <button onClick={() => copy(n)}>{copiedId === n.id ? '已复制' : '复制'}</button>
             <button onClick={() => jump(n)}>跳转</button>
+            <button class={confirmDeleteId === n.id ? 'danger' : ''} onClick={() => onDelete(n)}>
+              {confirmDeleteId === n.id ? '确认删除？' : '删除'}
+            </button>
             {n.type === 'confusion' && !n.aiExplanation && (
               <button disabled={explainingId === n.id} onClick={() => explain(n)}>
                 {explainingId === n.id ? '解释中…' : 'AI 解释'}
