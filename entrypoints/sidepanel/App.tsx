@@ -75,7 +75,7 @@ export function App() {
 
   // 无字幕视频的笔记入口：以当前播放位置为窗口打开编辑器（excerpt 为空合法）
   const noteHere = () => {
-    noteEditorCtx.value = { start: currentTime.value, end: currentTime.value + 10, excerpt: '' };
+    noteEditorCtx.value = { start: currentTime.value - 5, end: currentTime.value + 5, excerpt: '' };
   };
 
   const tab = activeTab.value;
@@ -148,7 +148,7 @@ export function App() {
           onSave={async (patch) => { await sendMsg({ type: 'SAVE_SETTINGS', patch }); await refreshSettings(); }}
         />}
       </main>
-      {noteEditorCtx.value && <NoteEditor />}
+      {noteEditorCtx.value && <NoteEditor key={`${noteEditorCtx.value.start}-${noteEditorCtx.value.end}`} />}
     </div>
   );
 }
