@@ -2,11 +2,14 @@ import { extractCaptionTracks, extractVideoMeta, fetchCueTrack, type CaptionTrac
 import { parseJson3, parseTimedtextXml } from '../src/adapters/timedtext';
 import type { Cue } from '../src/types';
 import type { Msg } from '../src/messaging/protocol';
+import { safeSend } from '../src/messaging/safe-send';
 
 export default defineContentScript({
   matches: ['https://www.youtube.com/*'],
   runAt: 'document_idle',
-  main() {
+  // ctx = WXT 注入的 content script 生命周期句柄：定时器/事件监听挂在它名下，
+  // 扩展重载（上下文失效）后自动清理，避免孤儿脚本继续跑心跳
+  main(ctx) {
     let lastVideoId = '';
     let lastTimeSent = -1;
 
@@ -104,8 +107,8 @@ export default defineContentScript({
         if (!meta.videoId || meta.videoId === lastVideoId) return;
         lastVideoId = meta.videoId;
         const cues = await obtainCues(html, meta.videoId);
-        browser.runtime.sendMessage({ type: 'PAGE_INFO', meta, cues } satisfies Msg).catch(() => {});
-      } catch { /* 页面未就绪，导航事件后重试 */ setTimeout(onPageChange, 1500); }
+        safeSend({ type: 'PAGE_INFO', meta, cues });
+      } catch { /* 页面未就绪，导航事件后重试 */ ctx.setTimeout(onPageChange, 1500); }
     }
 
     /** 取页面视频元素：优先 YouTube 主播放器，回退任意 video */
@@ -116,11 +119,11 @@ export default defineContentScript({
     // 播放进度：500ms 节流广播
     // 不取整秒：字幕 start 是浮点（如 103.28），SEEK 后若广播 Math.floor 值（103），
     // 面板 isCurrent 判定 103 >= 103.28 为假，高亮会落在上一行；改用 0.1s 粒度对齐
-    setInterval(() => {
+    ctx.setInterval(() => {
       const v = getVideo();
       if (!v) return;
       const t = Math.round(v.currentTime * 10) / 10;
-      if (t !== lastTimeSent) { lastTimeSent = t; browser.runtime.sendMessage({ type: 'PLAYBACK', t } satisfies Msg).catch(() => {}); }
+      if (t !== lastTimeSent) { lastTimeSent = t; safeSend({ type: 'PLAYBACK', t }); }
     }, 500);
 
     // 接收指令：SEEK / CAPTURE_NOW
@@ -133,14 +136,14 @@ export default defineContentScript({
       if (msg.type === 'CAPTURE_NOW' && v) {
         const t = v.currentTime;
         // 摘录当前句前后 ±1 句：由 background 持有字幕，这里只报时间，面板负责组稿
-        browser.runtime.sendMessage({ type: 'OPEN_NOTE_EDITOR', start: t - 5, end: t + 5, excerpt: '' } satisfies Msg).catch(() => {});
+        safeSend({ type: 'OPEN_NOTE_EDITOR', start: t - 5, end: t + 5, excerpt: '' });
       }
       // 面板重试：重置去重标记后重新抓取当前页
       if (msg.type === 'RETRY_TRANSCRIPT') { lastVideoId = ''; onPageChange(); }
     });
 
-    // SPA 导航监听 + 首次进入
-    window.addEventListener('yt-navigate-finish', onPageChange);
+    // SPA 导航监听 + 首次进入（挂 ctx 名下：扩展重载后自动移除监听）
+    ctx.addEventListener(window, 'yt-navigate-finish', onPageChange);
     onPageChange();
   },
 });

@@ -37,7 +37,8 @@ it('includeTranscript 附加附录', () => {
 });
 
 it('格式快照', () => {
-  expect(buildFusedMarkdown({ video, notes, summary })).toMatchSnapshot();
+  // now 固定注入：快照不随真实日期漂移（否则隔天跑必红）
+  expect(buildFusedMarkdown({ video, notes, summary, now: new Date('2026-08-20') })).toMatchSnapshot();
 });
 
 it('excerptZh 出现在摘录行后', () => {

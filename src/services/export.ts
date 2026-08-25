@@ -10,9 +10,9 @@ const noteBlock = (videoId: string, n: Note): string => {
   return lines.join('\n');
 };
 
-/** 融合导出：时间轴骨架，摘要分节 + 笔记嵌入（不经 LLM，批注原样保留） */
-export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; summary?: Summary; transcript?: Cue[]; includeTranscript?: boolean }): string {
-  const { video, notes, summary, transcript, includeTranscript } = input;
+/** 融合导出：时间轴骨架，摘要分节 + 笔记嵌入（不经 LLM，批注原样保留）。now 仅测试注入，默认当前时间 */
+export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; summary?: Summary; transcript?: Cue[]; includeTranscript?: boolean; now?: Date }): string {
+  const { video, notes, summary, transcript, includeTranscript, now = new Date() } = input;
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   const head = [
     '---',
@@ -21,7 +21,7 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
     `source: ${JSON.stringify(video.url)}`,
     `channel: ${JSON.stringify(video.channel)}`,
     // sv-SE locale 恰好输出 YYYY-MM-DD，且按本地时区
-    `date: ${new Date().toLocaleDateString('sv')}`,
+    `date: ${now.toLocaleDateString('sv')}`,
     '---', '',
     `# ${video.title}`, '',
   ];
