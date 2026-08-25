@@ -134,4 +134,16 @@ describe('LLM 流式显示 / Tab 记忆', () => {
     // 关键：存储里的值没有被 signal 初始值 'transcript' 覆盖
     expect(store.get('lastTab')).toBe('settings');
   });
+
+  it('保存设置成功后跳回进入设置前的工作 Tab', async () => {
+    stubBrowser();
+    const { findByText, getByText } = render(<App />);
+    await findByText('hello');
+    // 工作现场切到「笔记」→ 进设置 → 保存 → 应回到笔记
+    fireEvent.click(getByText('笔记'));
+    fireEvent.click(getByText('⚙️'));
+    await findByText('保存设置');
+    fireEvent.click(getByText('保存设置'));
+    await waitFor(() => expect(activeTab.value).toBe('notes'));
+  });
 });

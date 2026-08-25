@@ -23,7 +23,7 @@ describe('router', () => {
     const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'hello' }] }, d);
     expect(d.getTranscriptWithFallback).not.toHaveBeenCalled();
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }], undefined);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }], undefined, undefined);
     expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
     expect(r).toEqual({ ok: true, cueCount: 1 });
   });
@@ -41,7 +41,7 @@ describe('router', () => {
     await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
     expect(d.getTranscriptWithFallback).toHaveBeenCalledWith({ videoId: 'v', tracks: [] });
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], undefined);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], undefined, undefined);
   });
 
   it('PAGE_INFO 抓取失败时广播 TRANSCRIPT_FAILED 并返回 error', async () => {
@@ -74,7 +74,20 @@ describe('router', () => {
     const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })) });
     await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'x' }] }, d);
     expect(d.polishTranscript).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], [{ en: 'closure', zh: '闭包' }]);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], [{ en: 'closure', zh: '闭包' }], expect.any(Number));
+  });
+
+  it('PAGE_INFO 库中已有润色版（polishedAt）：直接复用，不重复润色不覆盖（防重复扣 token）', async () => {
+    const d = deps({
+      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: '已润色段落版' }], terms: [], polishedAt: 123 })),
+      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
+    });
+    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'raw' }] }, d);
+    expect(d.polishTranscript).not.toHaveBeenCalled();
+    expect(d.saveTranscript).not.toHaveBeenCalled();  // 不覆盖库里的润色版
+    expect(d.saveVideo).toHaveBeenCalled();
+    expect(d.broadcast).toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, reused: true });
   });
 
   it('TRANSLATE force：全量重翻且已配 LLM 即走 LLM（不依赖通道设置），术语表透传', async () => {
@@ -92,7 +105,7 @@ describe('router', () => {
     expect(d.saveTranscript).toHaveBeenCalledWith('v', [
       { start: 0, dur: 1, text: 'a', zh: 'LLM译' },
       { start: 1, dur: 1, text: 'b', zh: 'LLM译' },
-    ], [{ en: 'closure', zh: '闭包' }]);
+    ], [{ en: 'closure', zh: '闭包' }], undefined);
     expect(r).toEqual({ ok: true, failed: 0 });
   });
 
@@ -110,7 +123,7 @@ describe('router', () => {
     });
     const r = await handleMessage({ type: 'POLISH', videoId: 'v' }, d);
     expect(d.polishTranscript).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'So a.' }], [{ en: 'a', zh: '甲' }]);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'So a.' }], [{ en: 'a', zh: '甲' }], expect.any(Number));
     expect(r).toEqual({ ok: true, cueCount: 1, termCount: 1 });
   });
 

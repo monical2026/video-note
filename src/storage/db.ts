@@ -39,8 +39,8 @@ function normalize(v: unknown): TranscriptRecord | undefined {
   if (Array.isArray(v)) return { cues: v as Cue[], terms: [] };
   return v as TranscriptRecord | undefined;
 }
-export const saveTranscript = (videoId: string, cues: Cue[], terms?: Term[]) =>
-  db().then((d) => d.put('transcripts', { cues, terms: terms ?? [] } satisfies TranscriptRecord, videoId));
+export const saveTranscript = (videoId: string, cues: Cue[], terms?: Term[], polishedAt?: number) =>
+  db().then((d) => d.put('transcripts', { cues, terms: terms ?? [], polishedAt } satisfies TranscriptRecord, videoId));
 /** 兼容层：只取 cues 部分（绝大多数调用方只关心字幕行） */
 export const getTranscript = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v)?.cues);

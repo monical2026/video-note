@@ -18,8 +18,8 @@ function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
 
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
-  getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[] } | undefined>;
-  saveTranscript(videoId: string, cues: Cue[], terms?: Term[]): Promise<unknown>;
+  getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[]; polishedAt?: number } | undefined>;
+  saveTranscript(videoId: string, cues: Cue[], terms?: Term[], polishedAt?: number): Promise<unknown>;
   saveVideo(meta: any): Promise<unknown>;
   getVideo(videoId: string): Promise<any>;
   getNotesByVideo(videoId: string): Promise<Note[]>;
@@ -46,6 +46,14 @@ export interface RouterDeps {
 export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
+      // 幂等复用：库里已有润色版（polishedAt）时直接用——不重抓覆盖、不重复润色（每次打开视频页都会
+      // 重发 PAGE_INFO，若无此检查则反复扣 token，且先落库还会毁掉已有润色版）。想重润只能显式点「重新润色」
+      const existing = await deps.getTranscriptRecord(msg.meta.videoId);
+      if (existing?.polishedAt && existing.cues.length) {
+        await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
+        deps.broadcast(msg);
+        return { ok: true, cueCount: existing.cues.length, reused: true };
+      }
       // content script 已在页面上下文下载 timedtext；cues 为空说明直抓失败，走 Supadata 兜底
       let cues = msg.cues;
       if (!cues.length) {
@@ -60,15 +68,16 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       // 润色：开关开启且已配 LLM 则先润色（分段+清理+术语表）再落库；失败静默跳过，用原字幕
       let final = cues;
       let terms: Term[] | undefined;
+      let polishedAt: number | undefined;
       const s = await deps.getSettings();
       if (s.polishEnabled && s.llm) {
         try {
           const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
-          final = r.cues; terms = r.terms;
+          final = r.cues; terms = r.terms; polishedAt = Date.now();
         } catch { /* 用原字幕 */ }
       }
       await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
-      await deps.saveTranscript(msg.meta.videoId, final, terms);
+      await deps.saveTranscript(msg.meta.videoId, final, terms, polishedAt);
       // 处理完成后广播，通知 sidepanel 刷新（sidepanel 依据 sender.tab 区分原始消息）
       deps.broadcast(msg);
       return { ok: true, cueCount: final.length };
@@ -98,7 +107,8 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
-      await deps.saveTranscript(msg.videoId, merged, record?.terms);
+      // polishedAt 透传：翻译存库不丢润色标记，否则下次 PAGE_INFO 又触发重复润色
+      await deps.saveTranscript(msg.videoId, merged, record?.terms, record?.polishedAt);
       return { ok: true, failed: out.failed };
     }
     case 'POLISH': {
@@ -109,7 +119,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       if (!cues.length) throw new Error('无逐字稿');
       // 润色输出不带 zh：英文段落变了，旧译文必然失配，落库即清空待重翻
       const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
-      await deps.saveTranscript(msg.videoId, r.cues, r.terms);
+      await deps.saveTranscript(msg.videoId, r.cues, r.terms, Date.now());
       return { ok: true, cueCount: r.cues.length, termCount: r.terms.length };
     }
     case 'SAVE_NOTE': await deps.addNote(msg.note); return { ok: true };

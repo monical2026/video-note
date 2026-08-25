@@ -22,6 +22,7 @@ export function App() {
   const streamBoxRef = useRef<HTMLPreElement>(null);
   const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
   const tabRestored = useRef(false);    // 上次 Tab 恢复完成前禁止回写（防读写竞争覆盖）
+  const lastWorkTab = useRef<typeof activeTab.value>('transcript'); // 进入设置页前的工作 Tab（保存后跳回）
 
   const triggerTranslate = async (videoId: string, force = false) => {
     if (!videoId || translating) return;
@@ -82,6 +83,7 @@ export function App() {
   // Tab 切换持久化：恢复完成前不回写——否则挂载瞬间 subscribe 的立即回调（值为默认 transcript）
   // 可能在恢复读取之前落库，把存储里的上次 Tab 覆盖掉（真机 IPC 时序不定，读/写竞争）
   useEffect(() => activeTab.subscribe((v) => {
+    if (v !== 'settings') lastWorkTab.current = v; // 设置页是临时跳出改配置，记最近的工作现场
     if (tabRestored.current) browser.storage.local.set({ lastTab: v }).catch(() => {});
   }), []);
 
@@ -227,7 +229,12 @@ export function App() {
         {tab === 'library' && <LibraryView currentVideoId={videoInfo.value?.videoId ?? ''} />}
         {tab === 'settings' && <SettingsView
           settings={settings.value ?? { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false }}
-          onSave={async (patch) => { await sendMsg({ type: 'SAVE_SETTINGS', patch }); await refreshSettings(); }}
+          onSave={async (patch) => {
+            await sendMsg({ type: 'SAVE_SETTINGS', patch });
+            await refreshSettings();
+            // 保存成功即回到进入设置前的工作现场（上次在逐字稿回逐字稿、在笔记回笔记）
+            activeTab.value = lastWorkTab.current;
+          }}
         />}
       </main>
       {noteEditorCtx.value && <NoteEditor key={`${noteEditorCtx.value.start}-${noteEditorCtx.value.end}`} />}
