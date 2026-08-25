@@ -21,6 +21,7 @@ export function App() {
   const [fetchTimedOut, setFetchTimedOut] = useState(false);
   const streamBoxRef = useRef<HTMLPreElement>(null);
   const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
+  const tabRestored = useRef(false);    // 上次 Tab 恢复完成前禁止回写（防读写竞争覆盖）
 
   const triggerTranslate = async (videoId: string, force = false) => {
     if (!videoId || translating) return;
@@ -57,7 +58,7 @@ export function App() {
     browser.storage.local.get('lastTab').then((r: any) => {
       const v = r?.lastTab as typeof activeTab.value | undefined;
       if (v && TABS.some(([id]) => id === v)) activeTab.value = v;
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { tabRestored.current = true; });
     // 找当前 YouTube 标签页拿 videoId
     browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       const m = tab?.url?.match(/[?&]v=([\w-]{11})/);
@@ -78,8 +79,11 @@ export function App() {
     return () => browser.runtime.onMessage.removeListener(listener);
   }, []);
 
-  // Tab 切换持久化
-  useEffect(() => activeTab.subscribe((v) => { browser.storage.local.set({ lastTab: v }).catch(() => {}); }), []);
+  // Tab 切换持久化：恢复完成前不回写——否则挂载瞬间 subscribe 的立即回调（值为默认 transcript）
+  // 可能在恢复读取之前落库，把存储里的上次 Tab 覆盖掉（真机 IPC 时序不定，读/写竞争）
+  useEffect(() => activeTab.subscribe((v) => {
+    if (tabRestored.current) browser.storage.local.set({ lastTab: v }).catch(() => {});
+  }), []);
 
   // 抓取超时：cues 为空先显示「正在获取字幕…」，12s 仍无结果/无失败广播才切换为空态
   const cuesLen = cues.value.length;

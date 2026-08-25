@@ -119,4 +119,19 @@ describe('LLM 流式显示 / Tab 记忆', () => {
     fireEvent.click(getByText('AI 摘要'));
     await waitFor(() => expect(store.get('lastTab')).toBe('summary'));
   });
+
+  it('恢复读取完成前不回写初始 Tab（真机 IPC 时序下防覆盖）', async () => {
+    const store = stubBrowser();
+    store.set('lastTab', 'settings');
+    // get 延迟一拍：模拟真机 chrome.storage 的 IPC——读取结果晚于 subscribe 立即回调
+    (browser.storage.local as any).get = vi.fn(async (k: string) => {
+      await new Promise((r) => setTimeout(r, 0));
+      return store.has(k) ? { [k]: store.get(k) } : {};
+    });
+    const { findByText } = render(<App />);
+    await findByText('保存设置');
+    expect(activeTab.value).toBe('settings');
+    // 关键：存储里的值没有被 signal 初始值 'transcript' 覆盖
+    expect(store.get('lastTab')).toBe('settings');
+  });
 });
