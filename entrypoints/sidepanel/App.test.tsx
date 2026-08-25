@@ -43,3 +43,25 @@ describe('三档显示模式切换条', () => {
     expect(getByTestId('cue-0').textContent).toContain('你好');
   });
 });
+
+describe('LLM 重翻 / 重新润色按钮', () => {
+  it('配置 LLM 后显示；点击「用 LLM 重翻」发送 force，未配置不显示', async () => {
+    settings.llm = { baseUrl: 'http://x/v1', apiKey: 'k', model: 'm' };
+    stubBrowser();
+    const { getByTestId, findByText } = render(<App />);
+    await findByText('hello');
+    expect(getByTestId('retranslate-llm')).toBeTruthy();
+    expect(getByTestId('repolish')).toBeTruthy();
+    fireEvent.click(getByTestId('retranslate-llm'));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'TRANSLATE', videoId: 'vid123', force: true });
+    settings.llm = null;
+  });
+
+  it('未配置 LLM 时按钮不显示', async () => {
+    stubBrowser();
+    const { queryByTestId, findByText } = render(<App />);
+    await findByText('hello');
+    expect(queryByTestId('retranslate-llm')).toBeNull();
+    expect(queryByTestId('repolish')).toBeNull();
+  });
+});

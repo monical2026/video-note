@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it, beforeEach } from 'vitest';
-import { addNote, getNotesByVideo, listVideosWithNotes, resetDbForTest, saveVideo, saveTranscript, getTranscript } from './db';
+import { addNote, getNotesByVideo, getTranscriptRecord, listVideosWithNotes, resetDbForTest, saveVideo, saveTranscript, getTranscript, openTranscriptRaw, putTranscriptRaw } from './db';
 import type { Note, VideoMeta } from '../types';
 
 const v: VideoMeta = { videoId: 'v1', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 };
@@ -31,4 +31,18 @@ it('listVideosWithNotes 返回条数与最近时间且倒序', async () => {
 it('逐字稿整存整取', async () => {
   await saveTranscript('v1', [{ start: 0, dur: 2, text: 'hi', zh: '你好' }]);
   expect((await getTranscript('v1'))?.[0]?.zh).toBe('你好');
+});
+
+it('旧版裸数组格式读取归一：cues 可用、terms 为空', async () => {
+  await putTranscriptRaw('old', [{ start: 1, dur: 2, text: 'legacy' }]);
+  expect((await getTranscript('old'))?.[0]?.text).toBe('legacy');
+  expect(await getTranscriptRecord('old')).toEqual({ cues: [{ start: 1, dur: 2, text: 'legacy' }], terms: [] });
+});
+
+it('terms 术语表持久化往返', async () => {
+  await saveTranscript('v1', [{ start: 0, dur: 1, text: 'closure' }], [{ en: 'closure', zh: '闭包' }]);
+  expect((await getTranscriptRecord('v1'))?.terms).toEqual([{ en: 'closure', zh: '闭包' }]);
+  // 未传 terms 时存空数组（形状完整）
+  await saveTranscript('v2', [{ start: 0, dur: 1, text: 'x' }]);
+  expect((await getTranscriptRecord('v2'))?.terms).toEqual([]);
 });

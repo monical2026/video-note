@@ -3,7 +3,8 @@ import type { Cue, Note, Settings, Summary, VideoMeta } from '../types';
 export type Msg =
   | { type: 'PAGE_INFO'; meta: { videoId: string; title: string; channel: string }; cues: Cue[] }
   | { type: 'GET_VIDEO_DATA'; videoId: string }
-  | { type: 'TRANSLATE'; videoId: string }
+  | { type: 'TRANSLATE'; videoId: string; force?: boolean }  // force：忽略已有译文全量重翻（「LLM 重翻」按钮）
+  | { type: 'POLISH'; videoId: string }                       // 对已入库逐字稿重新润色（分段+清理+术语表），并清旧译文
   | { type: 'SAVE_NOTE'; note: Note }
   | { type: 'DELETE_NOTE'; id: string }
   | { type: 'EXPLAIN'; videoId: string; start: number; end: number }

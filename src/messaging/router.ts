@@ -1,9 +1,10 @@
 import type { Msg, VideoData } from './protocol';
-import type { Cue, Note, Settings, Summary, VideoMeta } from '../types';
+import type { Cue, Note, Settings, Summary, Term, VideoMeta } from '../types';
 
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
-  saveTranscript(videoId: string, cues: Cue[]): Promise<unknown>;
+  getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[] } | undefined>;
+  saveTranscript(videoId: string, cues: Cue[], terms?: Term[]): Promise<unknown>;
   saveVideo(meta: any): Promise<unknown>;
   getVideo(videoId: string): Promise<any>;
   getNotesByVideo(videoId: string): Promise<Note[]>;
@@ -16,8 +17,8 @@ export interface RouterDeps {
   getTranscriptWithFallback(input: any): Promise<{ cues: Cue[]; source: string }>;
   googleFreeTranslate(text: string): Promise<string>;
   runBatchTranslation(cues: Cue[], fn: (t: string) => Promise<string>, opts: any): Promise<{ translated: Cue[]; failed: number }>;
-  llmTranslateBatch(config: any, texts: string[]): Promise<string[]>;
-  polishTranscript(config: any, cues: Cue[]): Promise<Cue[]>;
+  llmTranslateBatch(config: any, texts: string[], terms?: Term[]): Promise<string[]>;
+  polishTranscript(config: any, cues: Cue[]): Promise<{ cues: Cue[]; terms: Term[] }>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
@@ -41,14 +42,18 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
           return { error: e instanceof Error ? e.message : String(e) };
         }
       }
-      // 润色：开关开启且已配 LLM 则先润色再落库；失败静默跳过，用原字幕
+      // 润色：开关开启且已配 LLM 则先润色（分段+清理+术语表）再落库；失败静默跳过，用原字幕
       let final = cues;
+      let terms: Term[] | undefined;
       const s = await deps.getSettings();
       if (s.polishEnabled && s.llm) {
-        try { final = await deps.polishTranscript(s.llm, cues); } catch { /* 用原字幕 */ }
+        try {
+          const r = await deps.polishTranscript(s.llm, cues);
+          final = r.cues; terms = r.terms;
+        } catch { /* 用原字幕 */ }
       }
       await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
-      await deps.saveTranscript(msg.meta.videoId, final);
+      await deps.saveTranscript(msg.meta.videoId, final, terms);
       // 处理完成后广播，通知 sidepanel 刷新（sidepanel 依据 sender.tab 区分原始消息）
       deps.broadcast(msg);
       return { ok: true, cueCount: final.length };
@@ -60,22 +65,37 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       return { video: video ?? null, cues: cues ?? [], notes, summary: summary ?? null } satisfies VideoData;
     }
     case 'TRANSLATE': {
-      const cues = (await deps.getTranscript(msg.videoId)) ?? [];
+      const record = await deps.getTranscriptRecord(msg.videoId);
+      const cues = record?.cues ?? [];
       if (!cues.length) throw new Error('无逐字稿');
-      const pending = cues.filter((c) => !c.zh);
+      // force：忽略已有译文全量重翻（「LLM 重翻」按钮）；否则只翻缺译文的
+      const pending = msg.force ? cues : cues.filter((c) => !c.zh);
       if (!pending.length) return { ok: true, done: true };
       const s = await deps.getSettings();
       let out: { translated: Cue[]; failed: number };
-      if (s.translateChannel === 'llm' && s.llm) {
+      // force 且已配 LLM 时强制走 LLM（用户从免费通道切过来重翻的场景）；常规按设置通道
+      const useLlm = !!s.llm && (msg.force || s.translateChannel === 'llm');
+      if (useLlm) {
         const texts = pending.map((c) => c.text);
-        const zh = await deps.llmTranslateBatch(s.llm, texts);
+        const zh = await deps.llmTranslateBatch(s.llm, texts, record?.terms);
         out = { translated: pending.map((c, i) => ({ ...c, zh: zh[i] })), failed: 0 };
       } else {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
-      await deps.saveTranscript(msg.videoId, merged);
+      await deps.saveTranscript(msg.videoId, merged, record?.terms);
       return { ok: true, failed: out.failed };
+    }
+    case 'POLISH': {
+      const s = await deps.getSettings();
+      if (!s.llm) throw new Error('未配置 LLM，润色需要大模型');
+      const record = await deps.getTranscriptRecord(msg.videoId);
+      const cues = record?.cues ?? [];
+      if (!cues.length) throw new Error('无逐字稿');
+      // 润色输出不带 zh：英文段落变了，旧译文必然失配，落库即清空待重翻
+      const r = await deps.polishTranscript(s.llm, cues);
+      await deps.saveTranscript(msg.videoId, r.cues, r.terms);
+      return { ok: true, cueCount: r.cues.length, termCount: r.terms.length };
     }
     case 'SAVE_NOTE': await deps.addNote(msg.note); return { ok: true };
     case 'DELETE_NOTE': await deps.deleteNote(msg.id); return { ok: true };

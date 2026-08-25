@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Cue, Note, Summary, VideoMeta } from '../types';
+import type { Cue, Note, Summary, Term, TranscriptRecord, VideoMeta } from '../types';
 
 const DB_NAME = 'video-note', DB_VERSION = 1;
 let dbp: Promise<IDBPDatabase> | null = null;
@@ -33,8 +33,22 @@ export async function resetDbForTest() {
 
 export const saveVideo = (m: VideoMeta) => db().then((d) => d.put('videos', m));
 export const getVideo = (videoId: string) => db().then((d) => d.get('videos', videoId) as Promise<VideoMeta | undefined>);
-export const saveTranscript = (videoId: string, cues: Cue[]) => db().then((d) => d.put('transcripts', cues, videoId));
-export const getTranscript = (videoId: string) => db().then((d) => d.get('transcripts', videoId) as Promise<Cue[] | undefined>);
+
+/** 旧版直接存 Cue[] 数组，升级后存 {cues, terms}——读取时归一为新形状 */
+function normalize(v: unknown): TranscriptRecord | undefined {
+  if (Array.isArray(v)) return { cues: v as Cue[], terms: [] };
+  return v as TranscriptRecord | undefined;
+}
+export const saveTranscript = (videoId: string, cues: Cue[], terms?: Term[]) =>
+  db().then((d) => d.put('transcripts', { cues, terms: terms ?? [] } satisfies TranscriptRecord, videoId));
+/** 兼容层：只取 cues 部分（绝大多数调用方只关心字幕行） */
+export const getTranscript = (videoId: string) =>
+  db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v)?.cues);
+export const getTranscriptRecord = (videoId: string) =>
+  db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v));
+/** 原始读写（仅测试用）：绕过归一化层，写入/读取 store 里的原值 */
+export const putTranscriptRaw = (videoId: string, value: unknown) => db().then((d) => d.put('transcripts', value, videoId));
+export const openTranscriptRaw = (videoId: string) => db().then((d) => d.get('transcripts', videoId));
 
 export const addNote = (n: Note) => db().then((d) => d.put('notes', n));
 export const updateNote = addNote;

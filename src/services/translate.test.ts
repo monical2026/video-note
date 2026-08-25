@@ -17,3 +17,19 @@ it('googleFreeTranslate 拼接响应片段', async () => {
   expect(await googleFreeTranslate('hello')).toBe('你好');
   vi.unstubAllGlobals();
 });
+
+it('googleFreeTranslate 超长段落按句切分多次请求拼接（GET URL 保护）', async () => {
+  const f = vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => [[[decodeURIComponent((url as string).match(/q=([^&]*)/)![1]!.slice(0, 4)), '', null, null, 10]], null, 'en'],
+  }) as any);
+  vi.stubGlobal('fetch', f);
+  // 三句共约 3000 字符（超 1200 阈值）→ 按 . 切分 3 次请求
+  const long = ['Sentence one. ', 'Sentence two. ', 'Sentence three. '].map((s) => s.repeat(150)).join('').trim();
+  const out = await googleFreeTranslate(long);
+  expect(f.mock.calls.length).toBeGreaterThanOrEqual(3);
+  // 每次请求的 q 参数都不超阈值
+  for (const [url] of f.mock.calls as unknown as [string][]) expect(decodeURIComponent(url.match(/q=([^&]*)/)![1]!).length).toBeLessThanOrEqual(1250);
+  expect(out.length).toBeGreaterThan(0);
+  vi.unstubAllGlobals();
+});

@@ -13,16 +13,35 @@ const TABS = [
 
 export function App() {
   const [translating, setTranslating] = useState(false);
+  const [polishing, setPolishing] = useState(false);
+  const [polishError, setPolishError] = useState('');
   const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
 
-  const triggerTranslate = async (videoId: string) => {
+  const triggerTranslate = async (videoId: string, force = false) => {
     if (!videoId || translating) return;
     setTranslating(true);
+    if (force) {
+      // 全量重翻：先把界面里的旧译文清掉，进度显示才真实（库里由 force 语义重写）
+      cues.value = cues.value.map((c) => ({ ...c, zh: undefined }));
+    }
     try {
-      await sendMsg({ type: 'TRANSLATE', videoId });
+      await sendMsg({ type: 'TRANSLATE', videoId, force });
       await loadVideoData(videoId);
     } catch { /* 失败静默：保留原字幕，可手动重试 */ }
     finally { setTranslating(false); }
+  };
+
+  /** 重新润色：分段+去口水词+术语表，落库即清旧译文，随后自动重翻 */
+  const repolish = async (videoId: string) => {
+    if (!videoId || polishing || translating) return;
+    setPolishing(true); setPolishError('');
+    try {
+      await sendMsg({ type: 'POLISH', videoId });
+      await loadVideoData(videoId);
+      await triggerTranslate(videoId);
+    } catch (e) {
+      setPolishError(e instanceof Error ? e.message : String(e));
+    } finally { setPolishing(false); }
   };
 
   useEffect(() => {
@@ -114,7 +133,20 @@ export function App() {
             <button disabled={!currentVideoId || translating || !pendingCount} onClick={() => triggerTranslate(currentVideoId)}>
               {translating ? '翻译中…' : '翻译'}
             </button>
+            {settings.value?.llm && (
+              <>
+                <button data-testid="retranslate-llm" disabled={!currentVideoId || translating || polishing || !cues.value.length}
+                  onClick={() => triggerTranslate(currentVideoId, true)}>
+                  用 LLM 重翻
+                </button>
+                <button data-testid="repolish" disabled={!currentVideoId || translating || polishing || !cues.value.length}
+                  onClick={() => repolish(currentVideoId)}>
+                  {polishing ? '润色中…' : '重新润色'}
+                </button>
+              </>
+            )}
           </div>
+          {polishError && <div class="err"><span>润色失败：{polishError}</span></div>}
           {settings.value?.translateChannel === 'free' && !settings.value.llm && (
             <div class="translate-hint">免费通道逐句翻译较慢、术语有限。配置 LLM key 可大幅提速提质 → ⚙️</div>
           )}
