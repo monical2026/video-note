@@ -2,13 +2,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/preact';
 import { App } from './App';
-import { displayMode } from './state';
+import { activeTab, displayMode } from './state';
 import type { Settings } from '../../src/types';
 
 const settings: Settings = { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false };
 const cues = [{ start: 1, dur: 2, text: 'hello', zh: '你好' }];
 
 function stubBrowser() {
+  const store = new Map<string, any>();
   vi.stubGlobal('browser', {
     runtime: {
       sendMessage: vi.fn(async (msg: any) => {
@@ -19,10 +20,17 @@ function stubBrowser() {
       onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
     },
     tabs: { query: vi.fn(async () => [{ url: 'https://www.youtube.com/watch?v=vid123456789' }]) },
+    storage: {
+      local: {
+        get: vi.fn(async (k: string) => (store.has(k) ? { [k]: store.get(k) } : {})),
+        set: vi.fn(async (obj: any) => { for (const [k, v] of Object.entries(obj)) store.set(k, v); }),
+      },
+    },
   });
+  return store;
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); displayMode.value = 'bilingual'; });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); displayMode.value = 'bilingual'; activeTab.value = 'transcript'; });
 
 describe('三档显示模式切换条', () => {
   it('渲染三个分段按钮；点击「仅中文」保存偏好且 TranscriptView 英文行隐藏', async () => {
@@ -63,5 +71,52 @@ describe('LLM 重翻 / 重新润色按钮', () => {
     await findByText('hello');
     expect(queryByTestId('retranslate-llm')).toBeNull();
     expect(queryByTestId('repolish')).toBeNull();
+  });
+});
+
+describe('LLM 流式显示 / Tab 记忆', () => {
+  it('收到 LLM_STREAM 广播显示阶段、批号与逐字文本', async () => {
+    stubBrowser();
+    const { findByText, findByTestId } = render(<App />);
+    await findByText('hello');
+    // 模拟 background 广播（listener 由 App 注册到 onMessage）
+    const cb = (browser.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (m: any, s: any) => void;
+    cb({ type: 'LLM_STREAM', phase: 'polish', batch: 2, batchTotal: 5, text: '[7-9] So closures capture state' }, null);
+    const box = await findByTestId('llm-stream');
+    expect(box.textContent).toContain('润色中');
+    expect(box.textContent).toContain('2/5');
+    expect(box.textContent).toContain('[7-9] So closures capture state');
+  });
+
+  it('翻译失败显示错误条（不再静默）', async () => {
+    stubBrowser();
+    vi.stubGlobal('browser', {
+      ...(browser as any),
+      runtime: {
+        ...(browser as any).runtime,
+        sendMessage: vi.fn(async (msg: any) => (msg.type === 'TRANSLATE' ? { error: 'LLM 429: 余额不足' } : (browser as any).runtime.sendMessage(msg))),
+      },
+    });
+    const { findByText } = render(<App />);
+    await findByText('hello');
+    fireEvent.click(document.querySelector('.translate-bar button')!);
+    await waitFor(() => expect(document.body.textContent).toContain('翻译失败：LLM 429: 余额不足'));
+  });
+
+  it('记住上次的 Tab：预存 settings 后启动恢复', async () => {
+    const store = stubBrowser();
+    store.set('lastTab', 'settings');
+    const { findByText } = render(<App />);
+    // activeTab 恢复为 settings：设置页的保存按钮出现
+    await findByText('保存设置');
+    expect(activeTab.value).toBe('settings');
+  });
+
+  it('切换 Tab 写入持久化存储', async () => {
+    const store = stubBrowser();
+    const { findByText, getByText } = render(<App />);
+    await findByText('hello');
+    fireEvent.click(getByText('AI 摘要'));
+    await waitFor(() => expect(store.get('lastTab')).toBe('summary'));
   });
 });

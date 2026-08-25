@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { activeTab, cues, currentTime, displayMode, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
+import type { StreamInfo } from '../../src/services/llm-translate';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -15,11 +16,15 @@ export function App() {
   const [translating, setTranslating] = useState(false);
   const [polishing, setPolishing] = useState(false);
   const [polishError, setPolishError] = useState('');
+  const [translateError, setTranslateError] = useState('');
+  const [stream, setStream] = useState<StreamInfo | null>(null);
+  const [fetchTimedOut, setFetchTimedOut] = useState(false);
+  const streamBoxRef = useRef<HTMLPreElement>(null);
   const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
 
   const triggerTranslate = async (videoId: string, force = false) => {
     if (!videoId || translating) return;
-    setTranslating(true);
+    setTranslating(true); setTranslateError(''); setStream(null);
     if (force) {
       // 全量重翻：先把界面里的旧译文清掉，进度显示才真实（库里由 force 语义重写）
       cues.value = cues.value.map((c) => ({ ...c, zh: undefined }));
@@ -27,25 +32,32 @@ export function App() {
     try {
       await sendMsg({ type: 'TRANSLATE', videoId, force });
       await loadVideoData(videoId);
-    } catch { /* 失败静默：保留原字幕，可手动重试 */ }
-    finally { setTranslating(false); }
+    } catch (e) {
+      // 失败必须可见（此前静默吞掉，用户只见"没反应"）
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally { setTranslating(false); setStream(null); }
   };
 
   /** 重新润色：分段+去口水词+术语表，落库即清旧译文，随后自动重翻 */
   const repolish = async (videoId: string) => {
     if (!videoId || polishing || translating) return;
-    setPolishing(true); setPolishError('');
+    setPolishing(true); setPolishError(''); setStream(null);
     try {
       await sendMsg({ type: 'POLISH', videoId });
       await loadVideoData(videoId);
       await triggerTranslate(videoId);
     } catch (e) {
       setPolishError(e instanceof Error ? e.message : String(e));
-    } finally { setPolishing(false); }
+    } finally { setPolishing(false); setStream(null); }
   };
 
   useEffect(() => {
     refreshSettings();
+    // 记住上次的 Tab：面板关闭重开后回到原处（而非默认「逐字稿」）
+    browser.storage.local.get('lastTab').then((r: any) => {
+      const v = r?.lastTab as typeof activeTab.value | undefined;
+      if (v && TABS.some(([id]) => id === v)) activeTab.value = v;
+    }).catch(() => {});
     // 找当前 YouTube 标签页拿 videoId
     browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       const m = tab?.url?.match(/[?&]v=([\w-]{11})/);
@@ -56,12 +68,34 @@ export function App() {
       if (msg.type === 'PLAYBACK') currentTime.value = msg.t;
       if (msg.type === 'OPEN_NOTE_EDITOR') noteEditorCtx.value = msg;
       if (msg.type === 'TRANSCRIPT_FAILED') transcriptError.value = msg.reason;
+      if (msg.type === 'LLM_STREAM') setStream(msg as StreamInfo);
       // 仅接受 background 处理完成后的广播（sender 无 tab）；忽略 content script 发来的原始未处理消息
-      if (msg.type === 'PAGE_INFO' && !sender?.tab) { transcriptError.value = ''; loadVideoData(msg.meta.videoId); }
+      if (msg.type === 'PAGE_INFO' && !sender?.tab) {
+        transcriptError.value = ''; setStream(null); loadVideoData(msg.meta.videoId);
+      }
     };
     browser.runtime.onMessage.addListener(listener);
     return () => browser.runtime.onMessage.removeListener(listener);
   }, []);
+
+  // Tab 切换持久化
+  useEffect(() => activeTab.subscribe((v) => { browser.storage.local.set({ lastTab: v }).catch(() => {}); }), []);
+
+  // 抓取超时：cues 为空先显示「正在获取字幕…」，12s 仍无结果/无失败广播才切换为空态
+  const cuesLen = cues.value.length;
+  const curVideoId0 = videoInfo.value?.videoId ?? '';
+  useEffect(() => {
+    setFetchTimedOut(false);
+    if (cuesLen) return;
+    const t = setTimeout(() => setFetchTimedOut(true), 12_000);
+    return () => clearTimeout(t);
+  }, [cuesLen, curVideoId0]);
+
+  // 流式文本自动滚到底（跟随生成）
+  useEffect(() => {
+    const el = streamBoxRef.current;
+    if (el && typeof el.scrollTo === 'function') el.scrollTo(0, el.scrollHeight);
+  }, [stream?.text]);
 
   // 免费通道自动翻译：cues 非空且全部无译文时，每个视频自动触发一次
   const pendingCount = cues.value.filter((c) => !c.zh).length;
@@ -147,10 +181,22 @@ export function App() {
             )}
           </div>
           {polishError && <div class="err"><span>润色失败：{polishError}</span></div>}
+          {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
+          {stream && (
+            <div class="llm-stream" data-testid="llm-stream">
+              <span class="llm-stream-head">
+                {stream.phase === 'polish' ? '润色中' : '翻译中'} · 第 {stream.batch}/{stream.batchTotal} 批
+              </span>
+              <pre ref={streamBoxRef}>{stream.text}</pre>
+            </div>
+          )}
           {settings.value?.translateChannel === 'free' && !settings.value.llm && (
             <div class="translate-hint">免费通道逐句翻译较慢、术语有限。配置 LLM key 可大幅提速提质 → ⚙️</div>
           )}
-          {cues.value.length === 0 && (
+          {cues.value.length === 0 && !transcriptError.value && !fetchTimedOut && (
+            <div class="empty fetching" data-testid="transcript-fetching"><span>⏳ 正在获取字幕…</span></div>
+          )}
+          {cues.value.length === 0 && (fetchTimedOut || transcriptError.value) && (
             <div class="empty" data-testid="transcript-empty">
               <span>本视频没有逐字稿（或获取失败）</span>
               <button onClick={noteHere}>📝 在当前播放位置记笔记</button>

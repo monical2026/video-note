@@ -18,6 +18,7 @@ export type Msg =
   | { type: 'LIST_LIBRARY' }
   | { type: 'OPEN_NOTE_EDITOR'; start: number; end: number; excerpt: string }
   | { type: 'TRANSCRIPT_FAILED'; videoId: string; reason: string }
+  | { type: 'LLM_STREAM'; phase: 'polish' | 'translate'; batch: number; batchTotal: number; text: string }  // bg→面板：LLM 流式生成进度（节流后）
   | { type: 'RETRY_TRANSCRIPT' };
 
 export interface VideoData { video: VideoMeta | null; cues: Cue[]; notes: Note[]; summary: Summary | null; }

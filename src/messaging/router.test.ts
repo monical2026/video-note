@@ -87,7 +87,7 @@ describe('router', () => {
       // 通道保持 free：force 仍应走 LLM
     });
     const r = await handleMessage({ type: 'TRANSLATE', videoId: 'v', force: true }, d);
-    expect(d.llmTranslateBatch).toHaveBeenCalledWith(expect.anything(), ['a', 'b'], [{ en: 'closure', zh: '闭包' }]);
+    expect(d.llmTranslateBatch).toHaveBeenCalledWith(expect.anything(), ['a', 'b'], [{ en: 'closure', zh: '闭包' }], expect.anything());
     expect(d.runBatchTranslation).not.toHaveBeenCalled();
     expect(d.saveTranscript).toHaveBeenCalledWith('v', [
       { start: 0, dur: 1, text: 'a', zh: 'LLM译' },

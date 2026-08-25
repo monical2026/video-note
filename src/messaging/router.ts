@@ -1,5 +1,20 @@
 import type { Msg, VideoData } from './protocol';
 import type { Cue, Note, Settings, Summary, Term, VideoMeta } from '../types';
+import type { OnStream } from '../services/llm-translate';
+
+/** LLM 流式进度 → 面板广播：80ms 节流（delta 高频，UI 只需最新帧）；阶段/批号变化强制发（新批立即可见） */
+function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
+  let last = 0;
+  let lastKey = '';
+  return (info) => {
+    const key = `${info.phase}:${info.batch}`;
+    const now = Date.now();
+    if (key !== lastKey || now - last >= 80) {
+      lastKey = key; last = now;
+      broadcast({ type: 'LLM_STREAM', ...info });
+    }
+  };
+}
 
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
@@ -17,8 +32,8 @@ export interface RouterDeps {
   getTranscriptWithFallback(input: any): Promise<{ cues: Cue[]; source: string }>;
   googleFreeTranslate(text: string): Promise<string>;
   runBatchTranslation(cues: Cue[], fn: (t: string) => Promise<string>, opts: any): Promise<{ translated: Cue[]; failed: number }>;
-  llmTranslateBatch(config: any, texts: string[], terms?: Term[]): Promise<string[]>;
-  polishTranscript(config: any, cues: Cue[]): Promise<{ cues: Cue[]; terms: Term[] }>;
+  llmTranslateBatch(config: any, texts: string[], terms?: Term[], onStream?: OnStream): Promise<string[]>;
+  polishTranscript(config: any, cues: Cue[], onStream?: OnStream): Promise<{ cues: Cue[]; terms: Term[] }>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
@@ -48,7 +63,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const s = await deps.getSettings();
       if (s.polishEnabled && s.llm) {
         try {
-          const r = await deps.polishTranscript(s.llm, cues);
+          const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
           final = r.cues; terms = r.terms;
         } catch { /* 用原字幕 */ }
       }
@@ -77,7 +92,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const useLlm = !!s.llm && (msg.force || s.translateChannel === 'llm');
       if (useLlm) {
         const texts = pending.map((c) => c.text);
-        const zh = await deps.llmTranslateBatch(s.llm, texts, record?.terms);
+        const zh = await deps.llmTranslateBatch(s.llm, texts, record?.terms, makeStreamBroadcaster(deps.broadcast));
         out = { translated: pending.map((c, i) => ({ ...c, zh: zh[i] })), failed: 0 };
       } else {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
@@ -93,7 +108,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const cues = record?.cues ?? [];
       if (!cues.length) throw new Error('无逐字稿');
       // 润色输出不带 zh：英文段落变了，旧译文必然失配，落库即清空待重翻
-      const r = await deps.polishTranscript(s.llm, cues);
+      const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
       await deps.saveTranscript(msg.videoId, r.cues, r.terms);
       return { ok: true, cueCount: r.cues.length, termCount: r.terms.length };
     }

@@ -23,6 +23,13 @@ main { flex: 1; overflow-y: auto; padding: 8px 12px; }
 
 .translate-hint { font-size: 11px; color: #6e7781; padding: 2px 0 6px; }
 
+/* ===== LLM 流式生成显示区（润色/翻译逐字流出） ===== */
+.llm-stream { border: 1px solid #d0d7de; border-radius: 6px; margin: 6px 0; background: #f6f8fa; }
+.llm-stream-head { display: block; font-size: 11px; color: #0969da; padding: 4px 8px 2px; }
+.llm-stream pre { max-height: 180px; overflow-y: auto; margin: 0; padding: 2px 8px 8px; font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: #24292f; }
+/* 抓取中空态 */
+.empty.fetching { color: #6e7781; }
+
 /* ===== 设置页：分组卡片布局 ===== */
 .settings { display: flex; flex-direction: column; }
 .settings-card { background: #f6f8fa; border-radius: 8px; padding: 14px; margin-bottom: 12px; border-left: 3px solid #0969da; display: flex; flex-direction: column; gap: 10px; }
