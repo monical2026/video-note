@@ -59,10 +59,10 @@ function parseNumberedLines(raw: string, expected: number): string[] | null {
   return out.length === expected ? out : null;
 }
 
-/** LLM 纠错润色 v3：一句一行 → 按语义分段合并（[from-to] 行协议，流式可读）；术语表由独立小请求产出 */
+/** LLM 纠错润色 v4：段首锚定（模型只抄一个起始行号，范围由代码从相邻锚推算）+ 批尾顺延；术语表独立小请求 */
 const POLISH_BATCH_LINES = 60;
 
-const POLISH_SYSTEM = `你是英文视频字幕的整理编辑。用户给出带全局行号的口语转写字幕行，整理成可读讲稿。
+const POLISH_SYSTEM = `你是英文视频字幕的整理编辑。用户给出带 [行号] 的口语转写碎行（每次停顿一行，不是完整句子），请按语义把它们重建成可读讲稿。
 
 必须做：
 1. 删除 um / uh / er / you know / I mean / right? 等纯语气填充词
@@ -83,55 +83,82 @@ const POLISH_SYSTEM = `你是英文视频字幕的整理编辑。用户给出带
 - 不合并不同说话人的内容
 - 听不清的内容写 [inaudible]，不猜成确定文本
 
-输出格式（纯文本，每段一行）：
-[起始行号-结束行号] 该段整理后的英文段落
-行号用输入给出的全局行号；按行号单调递增，覆盖输入的每一行，不重叠、不留缺口；段落文本内不要换行；不要输出任何其他内容。`;
+分段判定标准：以语义连贯和语法连接结构为主要判据（but / because / so / that / which 等悬空开头的行必须与上一行相连成同一段）；字数、时间间隔、相似度只能作为辅助信号。
 
-/** 区间 → 分段 Cue：非法段（from>to / 越界 / 空 text）丢弃，缺口行以原文自成段，保证一行不丢 */
-function segmentsToCues(batch: Cue[], segments: { from: number; to: number; text: string }[], offset: number): Cue[] {
-  const n = batch.length;
-  const valid = segments
-    .filter((s) => Number.isInteger(s?.from) && Number.isInteger(s?.to) && s.to >= s.from && s.from > offset && s.to <= offset + n && typeof s?.text === 'string' && s.text.trim())
-    .map((s) => ({ lo: s.from - 1 - offset, hi: s.to - 1 - offset, text: s.text.trim() }))
-    .sort((a, b) => a.lo - b.lo);
-  const out: Cue[] = [];
-  let cursor = 0;
-  const fillGap = (toExclusive: number) => {
-    for (let i = cursor; i < toExclusive; i++) out.push({ ...batch[i]! });
-    cursor = Math.max(cursor, toExclusive);
-  };
-  for (const seg of valid) {
-    if (seg.lo < cursor) continue; // 与前段重叠：丢弃（保守，行不重复消费）
-    fillGap(seg.lo);
-    const merged = batch.slice(seg.lo, seg.hi + 1);
-    out.push({ start: merged[0]!.start, dur: merged.reduce((s, c) => s + c.dur, 0), text: seg.text });
-    cursor = seg.hi + 1;
+输出格式（纯文本，每段一行）：
+行号|该段重建后的完整英文段落
+行号照抄该段第一个碎行的 [行号]（抄输入里的数字，不要自己计算）；段落文本内不要换行；每段只输出一个起始行号，段的覆盖范围由系统按下一个段的行号自动推算，你不要输出结束行号。
+
+批尾顺延：如果本批结尾处的行是一个新话语单元的开头、但话在本批内说不完（看不到结尾），不要硬凑成段——只为它输出一行「行号|»」，系统会连同原文带到下一批处理。若用户消息末尾注明这是最后一批，则所有行都必须归入段落，不允许输出 »。`;
+
+/** 解析 "行号|段落文本" 锚点行；text 为 » 表示批尾顺延标记（defer=true） */
+function parseAnchorLines(raw: string): { line: number; text: string; defer?: boolean }[] {
+  const out: { line: number; text: string; defer?: boolean }[] = [];
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^\s*(\d+)\s*\|\s*(.*)$/);
+    if (m) {
+      const text = m[2]!.trim();
+      out.push(text === '»' ? { line: Number(m[1]), text: '', defer: true } : { line: Number(m[1]), text });
+    }
   }
-  fillGap(n);
   return out;
 }
 
-/** 解析 "[from-to] text" 行协议 → 区间数组 */
-function parseSegmentLines(raw: string): { from: number; to: number; text: string }[] {
-  const segs: { from: number; to: number; text: string }[] = [];
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^\s*\[(\d+)\s*-\s*(\d+)\]\s*(.+)$/);
-    if (m) segs.push({ from: Number(m[1]), to: Number(m[2]), text: m[3]!.trim() });
+/**
+ * 锚点 → 分段 Cue。段的覆盖范围 = 本锚到下一锚（或批尾），由代码推算——模型只标段首。
+ * 兜底（一行不丢）：中部缺口行、最后一批的尾部行 → 原文自成段。
+ * 返回 next = 下一批起始索引：非最后一批遇到 » 时，从 » 行顺延（原文带回下一批重建语境）。
+ */
+function anchorsToSegments(cues: Cue[], anchors: { line: number; text: string; defer?: boolean }[], from: number, to: number, isLast: boolean): { segs: Cue[]; next: number } {
+  const entries: { idx: number; text: string; defer: boolean }[] = [];
+  for (const a of anchors) {
+    if (a.defer && isLast) continue;                                           // 最后一批 » 无处顺延：忽略，该行起尾部兜底
+    const idx = a.line - 1;
+    if (!Number.isInteger(idx) || idx < from || idx >= to) continue;           // 越界丢弃
+    if (entries.length && idx <= entries[entries.length - 1]!.idx) continue;   // 非递增丢弃
+    entries.push({ idx, text: a.text, defer: !!a.defer });
   }
-  return segs;
+  const solid = entries.filter((e) => !e.defer);
+  const segs: Cue[] = [];
+  const pushRaw = (lo: number, hi: number) => { for (let r = lo; r < hi; r++) segs.push({ ...cues[r]! }); };
+  // 无实体锚（垃圾输出 / 只有 »）：全批原文兜底强制推进，防死循环
+  if (!solid.length) { pushRaw(from, to); return { segs, next: to }; }
+  // » 只在尾部生效（其后若另有实体锚则 » 被忽略——实体优先）
+  const lastSolidIdx = solid[solid.length - 1]!.idx;
+  const deferIdx = entries.find((e) => e.defer && e.idx > lastSolidIdx)?.idx;
+  let cursor = from;
+  for (let k = 0; k < solid.length; k++) {
+    const e = solid[k]!;
+    if (e.idx > cursor) pushRaw(cursor, e.idx);                                // 中部缺口：原文兜底
+    const segEnd = Math.min(solid[k + 1]?.idx ?? deferIdx ?? to, to);          // 覆盖到下一锚 / » 行前 / 批尾
+    const merged = cues.slice(e.idx, segEnd);
+    segs.push({ start: cues[e.idx]!.start, dur: merged.reduce((s, c) => s + c.dur, 0), text: e.text || cues[e.idx]!.text });
+    cursor = segEnd;
+  }
+  if (deferIdx != null) return { segs, next: deferIdx };                       // 尾部顺延：» 行起留给下一批
+  if (isLast) pushRaw(cursor, to);                                             // 最后一批尾部兜底（正常 cursor 已是 to）
+  return { segs, next: cursor };
 }
 
 export async function polishTranscript(config: LlmConfig, cues: Cue[], onStream?: OnStream): Promise<{ cues: Cue[]; terms: Term[] }> {
   const outCues: Cue[] = [];
-  const batchTotal = Math.ceil(cues.length / POLISH_BATCH_LINES);
-  for (let i = 0; i < cues.length; i += POLISH_BATCH_LINES) {
-    const batch = cues.slice(i, i + POLISH_BATCH_LINES);
-    const numbered = batch.map((c, j) => `${i + j + 1}. ${c.text}`).join('\n');
+  let i = 0;      // 下一批起始行索引（顺延会回拨）
+  let batchIdx = 0;
+  while (i < cues.length) {
+    const to = Math.min(i + POLISH_BATCH_LINES, cues.length);   // 顺延行计入批预算，批恒 ≤60 行
+    const isLast = to >= cues.length;
+    const numbered = cues.slice(i, to).map((c, j) => `[${i + j + 1}] ${c.text}`).join('\n');
+    const batchTotal = batchIdx + 1 + Math.ceil((cues.length - to) / POLISH_BATCH_LINES);
+    // 流式显示剥掉 "行号|" 前缀与 » 标记行，只留正文（解析仍用原始文本）
+    const clean = (acc: string) => acc.replace(/^\s*\d+\s*\|\s*/gm, '').replace(/^\s*»\s*$/gm, '');
     const raw = await chatStream(config, [
       { role: 'system', content: POLISH_SYSTEM },
-      { role: 'user', content: numbered },
-    ], (acc) => onStream?.({ phase: 'polish', batch: Math.floor(i / POLISH_BATCH_LINES) + 1, batchTotal, text: acc }));
-    outCues.push(...segmentsToCues(batch, parseSegmentLines(raw), i));
+      { role: 'user', content: numbered + (isLast ? '\n\n（这是最后一批，所有行都必须归入段落）' : '') },
+    ], (acc) => onStream?.({ phase: 'polish', batch: batchIdx + 1, batchTotal, text: clean(acc) }));
+    const r = anchorsToSegments(cues, parseAnchorLines(raw), i, to, isLast);
+    outCues.push(...r.segs);
+    i = r.next;
+    batchIdx++;
   }
   // 术语表：独立小请求（输出小不截断）；失败不拖垮润色主体，返回空表
   let terms: Term[] = [];

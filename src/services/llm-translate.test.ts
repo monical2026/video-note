@@ -83,7 +83,7 @@ describe('翻译 v3（编号行协议）', () => {
   });
 });
 
-describe('润色 v3（[from-to] 行协议）', () => {
+describe('润色 v4（段首锚定 + 批尾顺延）', () => {
   const cues = [
     { start: 1, dur: 2, text: 'um so closure' },
     { start: 3, dur: 2, text: 'captures state' },
@@ -91,45 +91,87 @@ describe('润色 v3（[from-to] 行协议）', () => {
     { start: 6, dur: 2, text: 'topic here' },
   ];
 
-  it('分段合并（start=段首 / dur 累加）+ 术语表独立请求产出', async () => {
-    stubStreamThenJson('[1-2] Polished paragraph one.\n[3-4] Paragraph two.', { terms: [{ en: 'closure', zh: '闭包' }] });
+  it('段首锚定分段（start=段首 / dur 累加 / 范围由相邻锚推算）+ 术语独立请求', async () => {
+    stubStreamThenJson('1|So closures capture state.\n3|The second topic.', { terms: [{ en: 'closure', zh: '闭包' }] });
     const out = await polishTranscript(cfg, cues);
-    expect(out.cues.map((c) => c.text)).toEqual(['Polished paragraph one.', 'Paragraph two.']);
+    expect(out.cues.map((c) => c.text)).toEqual(['So closures capture state.', 'The second topic.']);
     expect(out.cues.map((c) => c.start)).toEqual([1, 5]);
-    expect(out.cues.map((c) => c.dur)).toEqual([4, 3]);
+    expect(out.cues.map((c) => c.dur)).toEqual([4, 3]);   // 段1 覆盖行1-2（dur 2+2），段2 覆盖行3-4（1+2）
     expect(out.terms).toEqual([{ en: 'closure', zh: '闭包' }]);
   });
 
-  it('区间缺口与非法段兜底为原文自成段（不丢行）', async () => {
-    stubStreamThenJson('[1-1] Fixed one.\n[3-2] bad range\n[9-9] out of range', { terms: [] });
+  it('越界锚丢弃；末锚按协议覆盖到批尾（锚定协议无中部洞）', async () => {
+    // 锚 1 声明"行 1 起是一段"，覆盖到批尾（行 1~3）；越界锚（行 9）丢弃不影响
+    stubStreamThenJson('1|Fixed one.\n9|out of range', { terms: [] });
     const out = await polishTranscript(cfg, [
       { start: 1, dur: 1, text: 'line one' },
       { start: 2, dur: 1, text: 'line two' },
       { start: 3, dur: 1, text: 'line three' },
     ]);
-    expect(out.cues.map((c) => c.text)).toEqual(['Fixed one.', 'line two', 'line three']);
-    expect(out.cues.map((c) => c.start)).toEqual([1, 2, 3]);
+    expect(out.cues.map((c) => c.text)).toEqual(['Fixed one.']);
+    expect(out.cues[0]!.start).toBe(1);
+    expect(out.cues[0]!.dur).toBe(3);   // 行 2、3 的时长并入末段（协议语义）
   });
 
-  it('超批大小分批调用；术语表请求失败不拖垮润色（空表继续）', async () => {
-    // 65 行 → 2 批（60+5）；第 3 次调用（术语）返回非 JSON 触发 chatJson 抛错
-    const bodies = ['[1-60] batch one merged', '[61-65] batch two merged'];
+  it('批尾顺延：» 标记的行带入下一批输入（带原文语境重建），批预算含顺延行', async () => {
+    // 60 行 + 5 行 → 批1 覆盖到行 57、» 在 58；批2 输入必须从行 58 起（含 58/59/60 原文）+ 新 5 行
+    const many = Array.from({ length: 65 }, (_, i) => ({ start: i, dur: 1, text: `l${i + 1}` }));
+    const payloads = [
+      { stream: '1|Batch one part one.\n57|Batch one part two.\n58|»' },
+      { stream: '58|Batch two merged.' },
+    ];
+    let call = 0;
+    const f = vi.fn(async () => {
+      call++;
+      return (call === 1
+        ? { ok: true, body: sse(payloads[0]!.stream!) }
+        : { ok: true, body: sse(payloads[1]!.stream!), json: async () => ({ choices: [{ message: { content: JSON.stringify({ terms: [] }) } }] }) }) as any;
+    });
+    vi.stubGlobal('fetch', f);
+    const out = await polishTranscript(cfg, many);
+    expect(f).toHaveBeenCalledTimes(3); // 两批润色 + 一次术语
+    // 批2 的输入必须包含顺延行 58/59/60 的原文（跨批语境完整）
+    const batch2Body = JSON.parse((f.mock.calls[1] as any[])[1]!.body as string);
+    expect(batch2Body.messages[1]!.content).toContain('[58] l58');
+    expect(batch2Body.messages[1]!.content).toContain('[60] l60');
+    expect(batch2Body.messages[1]!.content).toContain('[65] l65');
+    expect(batch2Body.messages[1]!.content).not.toContain('[57] l57'); // 已处理行不带回
+    // 结果：批1 两段 + 批2 一段
+    expect(out.cues.map((c) => c.text)).toEqual(['Batch one part one.', 'Batch one part two.', 'Batch two merged.']);
+  });
+
+  it('最后一批：所有行必须归段（尾部无 » 空间时兜底原文段）', async () => {
+    // 65 行 → 批1 全覆盖无顺延；批2 为最后一批，模型仍输出 »（应忽略），尾部行兜底原文
+    const many = Array.from({ length: 65 }, (_, i) => ({ start: i, dur: 1, text: `l${i + 1}` }));
+    const streams = ['1|All sixty.', '61|»'];
     let call = 0;
     vi.stubGlobal('fetch', vi.fn(async () => {
       call++;
-      if (call <= 2) return { ok: true, body: sse(bodies[call - 1]!) } as any;
-      return { ok: true, json: async () => { throw new Error('bad json'); } } as any;
+      return call === 1
+        ? { ok: true, body: sse(streams[0]!) } as any
+        : { ok: true, body: sse(streams[1]!), json: async () => ({ choices: [{ message: { content: JSON.stringify({ terms: [] }) } }] }) } as any;
     }));
-    const many = Array.from({ length: 65 }, (_, i) => ({ start: i, dur: 1, text: `l${i}` }));
     const out = await polishTranscript(cfg, many);
-    expect(out.cues.map((c) => c.text)).toEqual(['batch one merged', 'batch two merged']);
-    expect(out.terms).toEqual([]);
+    // 最后一批 » 被忽略（无实体锚）→ 行 61~65 全部兜底原文自成段；批1 一大段
+    expect(out.cues.length).toBe(6);
+    expect(out.cues.at(-1)!.text).toBe('l65');
   });
 
-  it('onStream 回调带 polish 阶段与批号', async () => {
-    stubStreamThenJson('[1-4] All merged.', { terms: [] });
+  it('无有效锚：全批原文兜底强制推进（防死循环）', async () => {
+    stubStreamThenJson('completely garbage output', { terms: [] });
+    const out = await polishTranscript(cfg, cues);
+    expect(out.cues.map((c) => c.text)).toEqual(cues.map((c) => c.text)); // 原文原样
+  });
+
+  it('onStream 带阶段与批号，显示文本剥掉行号前缀', async () => {
+    stubStreamThenJson('1|So closures.', { terms: [] });
     const events: StreamInfo[] = [];
     await polishTranscript(cfg, cues, (i) => events.push(i));
-    expect(events.at(-1)).toMatchObject({ phase: 'polish', batch: 1, batchTotal: 1, text: '[1-4] All merged.' });
+    expect(events.length).toBeGreaterThan(0);
+    const last = events.at(-1)!;
+    expect(last.phase).toBe('polish');
+    expect(last.batch).toBe(1);
+    expect(last.text).not.toMatch(/\d\|/);   // 前缀已剥
+    expect(last.text).toContain('So closures.');
   });
 });
