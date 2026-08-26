@@ -90,6 +90,37 @@ describe('router', () => {
     expect(r).toMatchObject({ ok: true, reused: true });
   });
 
+  it('PAGE_INFO 旧版润色数据（无 polishedAt 但段落形态）：识别为已润色，补记标记不再重润', async () => {
+    // 旧版润色落库形状：{cues, terms} 无 polishedAt；cues 为段落形态（句尾标点）
+    const legacy = [
+      { start: 0, dur: 10, text: 'So closures capture state, and this is a complete sentence.' },
+      { start: 10, dur: 12, text: 'The second paragraph also ends with a period!' },
+    ];
+    const d = deps({
+      getTranscriptRecord: vi.fn(async () => ({ cues: legacy, terms: [{ en: 'closure', zh: '闭包' }] })),
+      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
+    });
+    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'raw asr' }] }, d);
+    expect(d.polishTranscript).not.toHaveBeenCalled();  // 不重润（不扣 token）
+    // 迁移补记：写回相同 cues + polishedAt 标记
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', legacy, [{ en: 'closure', zh: '闭包' }], expect.any(Number));
+    expect(r).toMatchObject({ ok: true, reused: true });
+  });
+
+  it('PAGE_INFO 库中是原始 asr 短行（无标记无标点）：不误判，走正常润色流程', async () => {
+    const raw = [
+      { start: 0, dur: 2, text: 'um so closure' },
+      { start: 2, dur: 2, text: 'captures state' },
+      { start: 4, dur: 2, text: 'and second topic' },
+    ];
+    const d = deps({
+      getTranscriptRecord: vi.fn(async () => ({ cues: raw, terms: [] })),
+      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
+    });
+    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: raw }, d);
+    expect(d.polishTranscript).toHaveBeenCalled();  // 原始稿应正常润色
+  });
+
   it('TRANSLATE force：全量重翻且已配 LLM 即走 LLM（不依赖通道设置），术语表透传', async () => {
     const cues = [
       { start: 0, dur: 1, text: 'a', zh: '旧译文' },

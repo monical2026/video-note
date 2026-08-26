@@ -16,6 +16,19 @@ function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
   };
 }
 
+/**
+ * 旧版润色数据识别：修复 polishedAt 标记之前润色的记录没有该字段，但内容形态可判别——
+ * 润色稿是段落形态（句尾标点比例高/行长），原始 asr 稿是短碎片无标点。
+ * 误判代价不对称：误判"已润色"只是跳过自动润色（可手动点按钮补救），
+ * 误判"未润色"则重复扣 token 且覆盖已有好版本——宁可保守跳过。
+ */
+function looksPolished(cues: Cue[]): boolean {
+  if (!cues.length) return false;
+  const punctuated = cues.filter((c) => /[.!?…]["')]?$/.test(c.text.trim())).length;
+  const avgLen = cues.reduce((s, c) => s + c.text.length, 0) / cues.length;
+  return punctuated / cues.length >= 0.5 || avgLen >= 80;
+}
+
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
   getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[]; polishedAt?: number } | undefined>;
@@ -46,10 +59,15 @@ export interface RouterDeps {
 export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
-      // 幂等复用：库里已有润色版（polishedAt）时直接用——不重抓覆盖、不重复润色（每次打开视频页都会
-      // 重发 PAGE_INFO，若无此检查则反复扣 token，且先落库还会毁掉已有润色版）。想重润只能显式点「重新润色」
+      // 幂等复用：库里已有润色版时直接用——不重抓覆盖、不重复润色（每次打开视频页都会
+      // 重发 PAGE_INFO，若无此检查则反复扣 token，且先落库还会毁掉已有润色版）。想重润只能显式点「重新润色」。
+      // polishedAt 是标记；旧版润色数据无标记，用段落形态启发式识别（looksPolished）并补记标记迁移
       const existing = await deps.getTranscriptRecord(msg.meta.videoId);
-      if (existing?.polishedAt && existing.cues.length) {
+      if (existing?.cues.length && (existing.polishedAt || looksPolished(existing.cues))) {
+        if (!existing.polishedAt) {
+          // 迁移：旧版润色数据补记标记（写回相同 cues，零 LLM 调用）
+          await deps.saveTranscript(msg.meta.videoId, existing.cues, existing.terms, Date.now());
+        }
         await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
         deps.broadcast(msg);
         return { ok: true, cueCount: existing.cues.length, reused: true };
