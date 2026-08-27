@@ -5,7 +5,7 @@ import { App } from './App';
 import { activeTab, displayMode } from './state';
 import type { Settings } from '../../src/types';
 
-const settings: Settings = { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false };
+const settings: Settings = { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {} };
 const cues = [{ start: 1, dur: 2, text: 'hello', zh: '你好' }];
 
 function stubBrowser() {
@@ -52,40 +52,40 @@ describe('三档显示模式切换条', () => {
   });
 });
 
-describe('LLM 重翻 / 重新润色按钮', () => {
-  it('配置 LLM 后显示；点击「用 LLM 重翻」发送 force，未配置不显示', async () => {
+describe('LLM 重翻按钮', () => {
+  it('配置 LLM 后显示；点击「用 LLM 重翻」发送 force', async () => {
     settings.llm = { baseUrl: 'http://x/v1', apiKey: 'k', model: 'm' };
     stubBrowser();
-    const { getByTestId, findByText } = render(<App />);
+    const { getByTestId, queryByTestId, findByText } = render(<App />);
     await findByText('hello');
     expect(getByTestId('retranslate-llm')).toBeTruthy();
-    expect(getByTestId('repolish')).toBeTruthy();
     fireEvent.click(getByTestId('retranslate-llm'));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'TRANSLATE', videoId: 'vid123', force: true });
     settings.llm = null;
   });
 
-  it('未配置 LLM 时按钮不显示', async () => {
+  it('未配置 LLM 时按钮不显示；润色功能已移除（无重新润色按钮）', async () => {
     stubBrowser();
     const { queryByTestId, findByText } = render(<App />);
     await findByText('hello');
     expect(queryByTestId('retranslate-llm')).toBeNull();
     expect(queryByTestId('repolish')).toBeNull();
+    expect(document.body.textContent).not.toContain('重新润色');
   });
 });
 
 describe('LLM 流式显示 / Tab 记忆', () => {
-  it('收到 LLM_STREAM 广播显示阶段、批号与逐字文本', async () => {
+  it('收到 LLM_STREAM 广播显示批号与逐字文本', async () => {
     stubBrowser();
     const { findByText, findByTestId } = render(<App />);
     await findByText('hello');
     // 模拟 background 广播（listener 由 App 注册到 onMessage）
     const cb = (browser.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (m: any, s: any) => void;
-    cb({ type: 'LLM_STREAM', phase: 'polish', batch: 2, batchTotal: 5, text: '[7-9] So closures capture state' }, null);
+    cb({ type: 'LLM_STREAM', batch: 2, batchTotal: 5, text: '2. 闭包可以捕获状态' }, null);
     const box = await findByTestId('llm-stream');
-    expect(box.textContent).toContain('润色中');
+    expect(box.textContent).toContain('翻译中');
     expect(box.textContent).toContain('2/5');
-    expect(box.textContent).toContain('[7-9] So closures capture state');
+    expect(box.textContent).toContain('2. 闭包可以捕获状态');
   });
 
   it('翻译失败显示错误条（不再静默）', async () => {

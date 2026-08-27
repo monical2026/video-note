@@ -32,7 +32,6 @@ export interface Settings {
   translateChannel: 'free' | 'llm';
   llm: LlmConfig | null;        // null = 未配置
   supadataKey: string;           // '' = 未配置
-  polishEnabled: boolean;        // LLM 纠错润色开关
   llmKeys?: {                    // 各服务商 API Key 记忆槽位（切换预设自动带出）
     zhipu?: string; deepseek?: string; openai?: string;
   };

@@ -3,7 +3,7 @@ import type { Settings } from '../types';
 export interface SettingsArea { get(key: string): Promise<any>; set(obj: Record<string, any>): Promise<void>; }
 const KEY = 'vn-settings';
 export const DEFAULT_SETTINGS: Settings = {
-  displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false, llmKeys: {},
+  displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {},
 };
 
 /** area 缺省时用 chrome.storage.local（浏览器环境），node 环境走内存 fallback */

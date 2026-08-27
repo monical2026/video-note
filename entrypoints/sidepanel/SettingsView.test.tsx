@@ -4,7 +4,7 @@ import { render, fireEvent, waitFor } from '@testing-library/preact';
 import { SettingsView } from './SettingsView';
 import type { Settings } from '../../src/types';
 
-const baseSettings = { displayMode: 'bilingual' as const, translateChannel: 'free' as const, llm: null, supadataKey: '', polishEnabled: false };
+const baseSettings = { displayMode: 'bilingual' as const, translateChannel: 'free' as const, llm: null, supadataKey: '', llmKeys: {} };
 
 it('保存时回传完整 patch', async () => {
   const onSave = vi.fn();

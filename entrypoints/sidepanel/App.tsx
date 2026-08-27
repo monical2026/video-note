@@ -14,8 +14,6 @@ const TABS = [
 
 export function App() {
   const [translating, setTranslating] = useState(false);
-  const [polishing, setPolishing] = useState(false);
-  const [polishError, setPolishError] = useState('');
   const [translateError, setTranslateError] = useState('');
   const [stream, setStream] = useState<StreamInfo | null>(null);
   const [fetchTimedOut, setFetchTimedOut] = useState(false);
@@ -38,19 +36,6 @@ export function App() {
       // 失败必须可见（此前静默吞掉，用户只见"没反应"）
       setTranslateError(e instanceof Error ? e.message : String(e));
     } finally { setTranslating(false); setStream(null); }
-  };
-
-  /** 重新润色：分段+去口水词+术语表，落库即清旧译文，随后自动重翻 */
-  const repolish = async (videoId: string) => {
-    if (!videoId || polishing || translating) return;
-    setPolishing(true); setPolishError(''); setStream(null);
-    try {
-      await sendMsg({ type: 'POLISH', videoId });
-      await loadVideoData(videoId);
-      await triggerTranslate(videoId);
-    } catch (e) {
-      setPolishError(e instanceof Error ? e.message : String(e));
-    } finally { setPolishing(false); setStream(null); }
   };
 
   useEffect(() => {
@@ -174,25 +159,16 @@ export function App() {
               {translating ? '翻译中…' : '翻译'}
             </button>
             {settings.value?.llm && (
-              <>
-                <button data-testid="retranslate-llm" disabled={!currentVideoId || translating || polishing || !cues.value.length}
-                  onClick={() => triggerTranslate(currentVideoId, true)}>
-                  用 LLM 重翻
-                </button>
-                <button data-testid="repolish" disabled={!currentVideoId || translating || polishing || !cues.value.length}
-                  onClick={() => repolish(currentVideoId)}>
-                  {polishing ? '润色中…' : '重新润色'}
-                </button>
-              </>
+              <button data-testid="retranslate-llm" disabled={!currentVideoId || translating || !cues.value.length}
+                onClick={() => triggerTranslate(currentVideoId, true)}>
+                用 LLM 重翻
+              </button>
             )}
           </div>
-          {polishError && <div class="err"><span>润色失败：{polishError}</span></div>}
           {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
           {stream && (
             <div class="llm-stream" data-testid="llm-stream">
-              <span class="llm-stream-head">
-                {stream.phase === 'polish' ? '润色中' : '翻译中'} · 第 {stream.batch}/{stream.batchTotal} 批
-              </span>
+              <span class="llm-stream-head">翻译中 · 第 {stream.batch}/{stream.batchTotal} 批</span>
               <pre ref={streamBoxRef}>{stream.text}</pre>
             </div>
           )}
@@ -228,7 +204,7 @@ export function App() {
         />}
         {tab === 'library' && <LibraryView currentVideoId={videoInfo.value?.videoId ?? ''} />}
         {tab === 'settings' && <SettingsView
-          settings={settings.value ?? { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false }}
+          settings={settings.value ?? { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {} }}
           onSave={async (patch) => {
             await sendMsg({ type: 'SAVE_SETTINGS', patch });
             await refreshSettings();

@@ -151,7 +151,6 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
 
       <section class="settings-card">
         <h3>其他</h3>
-        <label class="check"><input type="checkbox" checked={s.polishEnabled} onChange={(e) => setS({ ...s, polishEnabled: (e.target as HTMLInputElement).checked })} /> LLM 纠错润色字幕（修正术语与标点）</label>
         <div class="field">
           <span class="label">截取片段快捷键</span>
           <span class="hint-line">

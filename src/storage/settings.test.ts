@@ -8,14 +8,13 @@ const mem = (): SettingsArea => {
 
 it('未存储时返回默认值', async () => {
   const s = await getSettings(mem());
-  expect(s).toMatchObject({ displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false });
+  expect(s).toMatchObject({ displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '' });
 });
 
 it('patch 保存并合并读取', async () => {
   const area = mem();
-  await saveSettings({ supadataKey: 'sk-1', polishEnabled: true }, area);
+  await saveSettings({ supadataKey: 'sk-1' }, area);
   const s = await getSettings(area);
   expect(s.supadataKey).toBe('sk-1');
-  expect(s.polishEnabled).toBe(true);
   expect(s.displayMode).toBe('bilingual');
 });

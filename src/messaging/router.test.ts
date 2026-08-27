@@ -8,44 +8,50 @@ const deps = (over: any = {}) => ({
   saveTranscript: vi.fn(), saveVideo: vi.fn(), getVideo: vi.fn(async () => null),
   getNotesByVideo: vi.fn(async () => []), addNote: vi.fn(), deleteNote: vi.fn(),
   getSummary: vi.fn(async () => null), saveSummary: vi.fn(),
-  getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'free', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: false })),
+  getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'free', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', llmKeys: {} })),
   saveSettings: vi.fn(),
   getTranscriptWithFallback: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], source: 'youtube' as const })),
   googleFreeTranslate: vi.fn(async () => '你好'), runBatchTranslation: vi.fn(async (c: any[]) => ({ translated: c.map((x) => ({ ...x, zh: '译' })), failed: 0 })),
-  llmTranslateBatch: vi.fn(async (_c: any, ts: string[]) => ts.map(() => 'LLM译')), polishTranscript: vi.fn(async (_c: any, cs: any[]) => ({ cues: cs, terms: [{ en: 'closure', zh: '闭包' }] })), explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
+  llmTranslateBatch: vi.fn(async (_c: any, ts: string[]) => ts.map(() => 'LLM译')),
+  extractTerms: vi.fn(async () => [{ en: 'closure', zh: '闭包' }]),
+  mergeCues: vi.fn((cs: any[]) => cs),   // 恒等 mock：拼段行为由 segment.test.ts 单测覆盖
+  explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
   buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
   listVideosWithNotes: vi.fn(async () => [{ video: { videoId: 'v', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 }, noteCount: 3, lastAt: 9 }]), ...over,
 });
 
 describe('router', () => {
-  it('PAGE_INFO 带 cues 直存：跳过兜底，落库并广播', async () => {
-    const d = deps();
+  it('PAGE_INFO 带 cues：经拼段落库并广播', async () => {
+    const d = deps({ getTranscriptRecord: vi.fn(async () => undefined) });   // 库为空 → 走抓取拼段
     const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'hello' }] }, d);
     expect(d.getTranscriptWithFallback).not.toHaveBeenCalled();
+    expect(d.mergeCues).toHaveBeenCalledWith([{ start: 0, dur: 1, text: 'hello' }]);
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }], undefined, undefined);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }]);
     expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
     expect(r).toEqual({ ok: true, cueCount: 1 });
   });
 
-  it('PAGE_INFO 润色开关开启时先润色再存库，并广播通知面板', async () => {
-    const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })) });
-    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'x' }] }, d);
-    expect(d.polishTranscript).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalled();
-    expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
+  it('PAGE_INFO 库中已有逐字稿：直接复用，不重抓不覆盖', async () => {
+    const d = deps();
+    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'fresh' }] }, d);
+    expect(d.mergeCues).not.toHaveBeenCalled();
+    expect(d.saveTranscript).not.toHaveBeenCalled();
+    expect(d.saveVideo).toHaveBeenCalled();
+    expect(d.broadcast).toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: true, reused: true });
   });
 
   it('PAGE_INFO cues 为空时走 Supadata 兜底', async () => {
-    const d = deps();
+    const d = deps({ getTranscriptRecord: vi.fn(async () => undefined) });
     await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
     expect(d.getTranscriptWithFallback).toHaveBeenCalledWith({ videoId: 'v', tracks: [] });
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], undefined, undefined);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }]);
   });
 
   it('PAGE_INFO 抓取失败时广播 TRANSCRIPT_FAILED 并返回 error', async () => {
-    const d = deps({ getTranscriptWithFallback: vi.fn(async () => { throw new Error('无可用字幕通道'); }) });
+    const d = deps({ getTranscriptRecord: vi.fn(async () => undefined), getTranscriptWithFallback: vi.fn(async () => { throw new Error('无可用字幕通道'); }) });
     const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
     expect(d.broadcast).toHaveBeenCalledWith({ type: 'TRANSCRIPT_FAILED', videoId: 'v', reason: '无可用字幕通道' });
     expect(r).toEqual({ error: '无可用字幕通道' });
@@ -70,67 +76,16 @@ describe('router', () => {
     expect(r.explanation).toBe('解释');
   });
 
-  it('PAGE_INFO 润色后存库带术语表', async () => {
-    const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })) });
-    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'x' }] }, d);
-    expect(d.polishTranscript).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }], [{ en: 'closure', zh: '闭包' }], expect.any(Number));
-  });
-
-  it('PAGE_INFO 库中已有润色版（polishedAt）：直接复用，不重复润色不覆盖（防重复扣 token）', async () => {
-    const d = deps({
-      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: '已润色段落版' }], terms: [], polishedAt: 123 })),
-      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
-    });
-    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'raw' }] }, d);
-    expect(d.polishTranscript).not.toHaveBeenCalled();
-    expect(d.saveTranscript).not.toHaveBeenCalled();  // 不覆盖库里的润色版
-    expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.broadcast).toHaveBeenCalled();
-    expect(r).toMatchObject({ ok: true, reused: true });
-  });
-
-  it('PAGE_INFO 旧版润色数据（无 polishedAt 但段落形态）：识别为已润色，补记标记不再重润', async () => {
-    // 旧版润色落库形状：{cues, terms} 无 polishedAt；cues 为段落形态（句尾标点）
-    const legacy = [
-      { start: 0, dur: 10, text: 'So closures capture state, and this is a complete sentence.' },
-      { start: 10, dur: 12, text: 'The second paragraph also ends with a period!' },
-    ];
-    const d = deps({
-      getTranscriptRecord: vi.fn(async () => ({ cues: legacy, terms: [{ en: 'closure', zh: '闭包' }] })),
-      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
-    });
-    const r = await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [{ start: 0, dur: 1, text: 'raw asr' }] }, d);
-    expect(d.polishTranscript).not.toHaveBeenCalled();  // 不重润（不扣 token）
-    // 迁移补记：写回相同 cues + polishedAt 标记
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', legacy, [{ en: 'closure', zh: '闭包' }], expect.any(Number));
-    expect(r).toMatchObject({ ok: true, reused: true });
-  });
-
-  it('PAGE_INFO 库中是原始 asr 短行（无标记无标点）：不误判，走正常润色流程', async () => {
-    const raw = [
-      { start: 0, dur: 2, text: 'um so closure' },
-      { start: 2, dur: 2, text: 'captures state' },
-      { start: 4, dur: 2, text: 'and second topic' },
-    ];
-    const d = deps({
-      getTranscriptRecord: vi.fn(async () => ({ cues: raw, terms: [] })),
-      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'llm', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', polishEnabled: true })),
-    });
-    await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: raw }, d);
-    expect(d.polishTranscript).toHaveBeenCalled();  // 原始稿应正常润色
-  });
-
-  it('TRANSLATE force：全量重翻且已配 LLM 即走 LLM（不依赖通道设置），术语表透传', async () => {
+  it('TRANSLATE force：全量重翻且已配 LLM 即走 LLM（不依赖通道设置），无术语表时先提取并随落库保存', async () => {
     const cues = [
       { start: 0, dur: 1, text: 'a', zh: '旧译文' },
       { start: 1, dur: 1, text: 'b', zh: '旧译文2' },
     ];
     const d = deps({
-      getTranscriptRecord: vi.fn(async () => ({ cues, terms: [{ en: 'closure', zh: '闭包' }] })),
-      // 通道保持 free：force 仍应走 LLM
+      getTranscriptRecord: vi.fn(async () => ({ cues, terms: [] })),   // 库里无术语表 → 触发提取
     });
     const r = await handleMessage({ type: 'TRANSLATE', videoId: 'v', force: true }, d);
+    expect(d.extractTerms).toHaveBeenCalledWith(expect.anything(), cues);
     expect(d.llmTranslateBatch).toHaveBeenCalledWith(expect.anything(), ['a', 'b'], [{ en: 'closure', zh: '闭包' }], expect.anything());
     expect(d.runBatchTranslation).not.toHaveBeenCalled();
     expect(d.saveTranscript).toHaveBeenCalledWith('v', [
@@ -140,6 +95,15 @@ describe('router', () => {
     expect(r).toEqual({ ok: true, failed: 0 });
   });
 
+  it('TRANSLATE 库里已有术语表：不重复提取直接注入', async () => {
+    const d = deps({
+      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'a' }], terms: [{ en: 'hoisting', zh: '提升' }] })),
+    });
+    await handleMessage({ type: 'TRANSLATE', videoId: 'v', force: true }, d);   // force 走 LLM
+    expect(d.extractTerms).not.toHaveBeenCalled();
+    expect(d.llmTranslateBatch).toHaveBeenCalledWith(expect.anything(), ['a'], [{ en: 'hoisting', zh: '提升' }], expect.anything());
+  });
+
   it('TRANSLATE 非 force：已有译文全部存在时直接 done', async () => {
     const d = deps({ getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'a', zh: '已有' }], terms: [] })) });
     const r = await handleMessage({ type: 'TRANSLATE', videoId: 'v' }, d);
@@ -147,20 +111,13 @@ describe('router', () => {
     expect(d.llmTranslateBatch).not.toHaveBeenCalled();
   });
 
-  it('POLISH：重新润色落库并清空旧译文（zh 失配）', async () => {
+  it('TRANSLATE 免费通道：走 runBatchTranslation，不提取术语', async () => {
     const d = deps({
-      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'um so a', zh: '旧译' }], terms: [] })),
-      polishTranscript: vi.fn(async (_c: any, cs: any[]) => ({ cues: [{ start: 0, dur: 1, text: 'So a.' }], terms: [{ en: 'a', zh: '甲' }] })),
+      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'a' }], terms: [] })),
     });
-    const r = await handleMessage({ type: 'POLISH', videoId: 'v' }, d);
-    expect(d.polishTranscript).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'So a.' }], [{ en: 'a', zh: '甲' }], expect.any(Number));
-    expect(r).toEqual({ ok: true, cueCount: 1, termCount: 1 });
-  });
-
-  it('POLISH：未配置 LLM 报错', async () => {
-    const d = deps({ getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', polishEnabled: false })) });
-    await expect(handleMessage({ type: 'POLISH', videoId: 'v' }, d)).rejects.toThrow('未配置 LLM');
+    await handleMessage({ type: 'TRANSLATE', videoId: 'v' }, d);
+    expect(d.runBatchTranslation).toHaveBeenCalled();
+    expect(d.extractTerms).not.toHaveBeenCalled();
   });
 
   it('LIST_LIBRARY 返回视频笔记列表', async () => {

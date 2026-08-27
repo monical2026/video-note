@@ -2,31 +2,17 @@ import type { Msg, VideoData } from './protocol';
 import type { Cue, Note, Settings, Summary, Term, VideoMeta } from '../types';
 import type { OnStream } from '../services/llm-translate';
 
-/** LLM 流式进度 → 面板广播：80ms 节流（delta 高频，UI 只需最新帧）；阶段/批号变化强制发（新批立即可见） */
+/** LLM 流式进度 → 面板广播：80ms 节流（delta 高频，UI 只需最新帧）；批号变化强制发（新批立即可见） */
 function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
   let last = 0;
-  let lastKey = '';
+  let lastBatch = -1;
   return (info) => {
-    const key = `${info.phase}:${info.batch}`;
     const now = Date.now();
-    if (key !== lastKey || now - last >= 80) {
-      lastKey = key; last = now;
+    if (info.batch !== lastBatch || now - last >= 80) {
+      lastBatch = info.batch; last = now;
       broadcast({ type: 'LLM_STREAM', ...info });
     }
   };
-}
-
-/**
- * 旧版润色数据识别：修复 polishedAt 标记之前润色的记录没有该字段，但内容形态可判别——
- * 润色稿是段落形态（句尾标点比例高/行长），原始 asr 稿是短碎片无标点。
- * 误判代价不对称：误判"已润色"只是跳过自动润色（可手动点按钮补救），
- * 误判"未润色"则重复扣 token 且覆盖已有好版本——宁可保守跳过。
- */
-function looksPolished(cues: Cue[]): boolean {
-  if (!cues.length) return false;
-  const punctuated = cues.filter((c) => /[.!?…]["')]?$/.test(c.text.trim())).length;
-  const avgLen = cues.reduce((s, c) => s + c.text.length, 0) / cues.length;
-  return punctuated / cues.length >= 0.5 || avgLen >= 80;
 }
 
 export interface RouterDeps {
@@ -46,7 +32,8 @@ export interface RouterDeps {
   googleFreeTranslate(text: string): Promise<string>;
   runBatchTranslation(cues: Cue[], fn: (t: string) => Promise<string>, opts: any): Promise<{ translated: Cue[]; failed: number }>;
   llmTranslateBatch(config: any, texts: string[], terms?: Term[], onStream?: OnStream): Promise<string[]>;
-  polishTranscript(config: any, cues: Cue[], onStream?: OnStream): Promise<{ cues: Cue[]; terms: Term[] }>;
+  extractTerms(config: any, cues: Cue[]): Promise<Term[]>;
+  mergeCues(cues: Cue[]): Cue[];   // 程序化拼段（碎行→段落，文字原样）
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
@@ -59,15 +46,10 @@ export interface RouterDeps {
 export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
   switch (msg.type) {
     case 'PAGE_INFO': {
-      // 幂等复用：库里已有润色版时直接用——不重抓覆盖、不重复润色（每次打开视频页都会
-      // 重发 PAGE_INFO，若无此检查则反复扣 token，且先落库还会毁掉已有润色版）。想重润只能显式点「重新润色」。
-      // polishedAt 是标记；旧版润色数据无标记，用段落形态启发式识别（looksPolished）并补记标记迁移
+      // 幂等复用：库里已有逐字稿直接用（拼段是无损确定性的，成品即原始；每次打开/刷新视频页都会
+      // 重发 PAGE_INFO，不检查则反复重抓覆盖）
       const existing = await deps.getTranscriptRecord(msg.meta.videoId);
-      if (existing?.cues.length && (existing.polishedAt || looksPolished(existing.cues))) {
-        if (!existing.polishedAt) {
-          // 迁移：旧版润色数据补记标记（写回相同 cues，零 LLM 调用）
-          await deps.saveTranscript(msg.meta.videoId, existing.cues, existing.terms, Date.now());
-        }
+      if (existing?.cues.length) {
         await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
         deps.broadcast(msg);
         return { ok: true, cueCount: existing.cues.length, reused: true };
@@ -83,19 +65,10 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
           return { error: e instanceof Error ? e.message : String(e) };
         }
       }
-      // 润色：开关开启且已配 LLM 则先润色（分段+清理+术语表）再落库；失败静默跳过，用原字幕
-      let final = cues;
-      let terms: Term[] | undefined;
-      let polishedAt: number | undefined;
-      const s = await deps.getSettings();
-      if (s.polishEnabled && s.llm) {
-        try {
-          const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
-          final = r.cues; terms = r.terms; polishedAt = Date.now();
-        } catch { /* 用原字幕 */ }
-      }
+      // 程序化拼段：碎行→段落（文字一字不改，零 LLM 零费用）后落库
+      const final = deps.mergeCues(cues);
       await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
-      await deps.saveTranscript(msg.meta.videoId, final, terms, polishedAt);
+      await deps.saveTranscript(msg.meta.videoId, final);
       // 处理完成后广播，通知 sidepanel 刷新（sidepanel 依据 sender.tab 区分原始消息）
       deps.broadcast(msg);
       return { ok: true, cueCount: final.length };
@@ -117,28 +90,21 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       let out: { translated: Cue[]; failed: number };
       // force 且已配 LLM 时强制走 LLM（用户从免费通道切过来重翻的场景）；常规按设置通道
       const useLlm = !!s.llm && (msg.force || s.translateChannel === 'llm');
+      let terms = record?.terms;
       if (useLlm) {
+        // 术语表：库里没有则先提取一次（独立小请求），之后每批注入保证全片统一译法，随落库保存
+        if (!terms?.length) {
+          terms = await deps.extractTerms(s.llm, cues);
+        }
         const texts = pending.map((c) => c.text);
-        const zh = await deps.llmTranslateBatch(s.llm, texts, record?.terms, makeStreamBroadcaster(deps.broadcast));
+        const zh = await deps.llmTranslateBatch(s.llm, texts, terms, makeStreamBroadcaster(deps.broadcast));
         out = { translated: pending.map((c, i) => ({ ...c, zh: zh[i] })), failed: 0 };
       } else {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
-      // polishedAt 透传：翻译存库不丢润色标记，否则下次 PAGE_INFO 又触发重复润色
-      await deps.saveTranscript(msg.videoId, merged, record?.terms, record?.polishedAt);
+      await deps.saveTranscript(msg.videoId, merged, terms, record?.polishedAt);
       return { ok: true, failed: out.failed };
-    }
-    case 'POLISH': {
-      const s = await deps.getSettings();
-      if (!s.llm) throw new Error('未配置 LLM，润色需要大模型');
-      const record = await deps.getTranscriptRecord(msg.videoId);
-      const cues = record?.cues ?? [];
-      if (!cues.length) throw new Error('无逐字稿');
-      // 润色输出不带 zh：英文段落变了，旧译文必然失配，落库即清空待重翻
-      const r = await deps.polishTranscript(s.llm, cues, makeStreamBroadcaster(deps.broadcast));
-      await deps.saveTranscript(msg.videoId, r.cues, r.terms, Date.now());
-      return { ok: true, cueCount: r.cues.length, termCount: r.terms.length };
     }
     case 'SAVE_NOTE': await deps.addNote(msg.note); return { ok: true };
     case 'DELETE_NOTE': await deps.deleteNote(msg.id); return { ok: true };
