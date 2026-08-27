@@ -39,11 +39,20 @@ describe('翻译（编号行协议 + 风格保留指令）', () => {
     await llmTranslateBatch(cfg, ['closures capture state'], [{ en: 'closure', zh: '闭包' }]);
     const body = JSON.parse((f.mock.calls[0] as any[])[1]!.body as string);
     const system = body.messages.find((m: any) => m.role === 'system')!.content as string;
+    // 术语表仍注入
     expect(system).toContain('closure → 闭包');
     expect(system).toContain('术语表');
-    expect(system).toContain('口译员');          // 风格指令：口语译口语
-    expect(system).toContain('保留说话者的风格与语气');
-    expect(system).toContain('不强行书面化');
+    // 用户翻译规范（2026-08-27）：通用基础规则
+    expect(system).toContain('完全匹配原文的语气和表达风格');
+    expect(system).toContain('不要逐字按照英文语法');
+    expect(system).toContain('通常保留英文的技术术语');
+    expect(system).not.toContain('{langName}');   // 占位符必须已实例化
+    // 中文规则
+    expect(system).toContain('现代、口语化的简体中文');
+    expect(system).toContain('先理解完整的语义');
+    expect(system).toContain('不要使用"您"');
+    expect(system).toContain('加入易读的空格');
+    expect(system).toContain('删除无实际意义的口头填充词');
   });
 
   it('条数不符自动重试一次，仍不符抛错', async () => {
