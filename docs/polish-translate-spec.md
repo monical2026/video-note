@@ -162,25 +162,24 @@
 | 想调整什么 | 改哪里 |
 |---|---|
 | 拼段参数（空隙 1.2s / 2 句 / 1200 字符） | `src/services/segment.ts` 顶部常量 |
-| 翻译指令（§4 的措辞） | 同文件 `llmTranslateBatch()` 内的 `system` 模板 |
-| 每段行数（"2~6 行"） | `POLISH_SYSTEM` 里的表述（LLM 行为，无硬校验） |
-| 术语表提取指令 | `src/services/llm-translate.ts` 的 `extractTerms()` |
+| 翻译指令（§4 口译员风格） | `src/services/llm-translate.ts` 的 `llmTranslateBatch()` 内 `system` 模板 |
+| 术语表提取指令 | 同文件 `extractTerms()` |
 | 翻译分批字符预算（3000） | 同文件 `TRANSLATE_BATCH_CHARS` |
 | 输出上限（max_tokens 4096） | `src/services/llm.ts` 的 `MAX_TOKENS` |
 | 免费通道单次请求上限（1200 字符，超了按句切分） | `src/services/translate.ts` 的 `FREE_MAX_CHARS` |
 | 流式节流（80ms） | `src/messaging/router.ts` 的 `makeStreamBroadcaster` |
-| 「用 LLM 重翻」「重新润色」按钮 | `entrypoints/sidepanel/App.tsx` 的 translate-bar 区块 |
-| 消息协议（TRANSLATE force / POLISH / LLM_STREAM） | `src/messaging/protocol.ts` + `src/messaging/router.ts` |
+| 「用 LLM 重翻」按钮 | `entrypoints/sidepanel/App.tsx` 的 translate-bar 区块 |
+| 消息协议（TRANSLATE force / LLM_STREAM） | `src/messaging/protocol.ts` + `src/messaging/router.ts` |
 | 术语表存储（transcripts `{cues, terms}`，旧数组格式读取兼容） | `src/storage/db.ts` |
 
-分段的技术约束（实现事实，改动需评估）：
+拼段与复用的事实约束：
 - 每段 `start` = 段首行时间戳，`dur` = 段内各行时长累加；点击行跳段首，高亮以段为窗口
-- LLM 返回 `from/to` 行区间；代码侧校验区间合法性，**缺口/非法的行以原文自成段，保证一行不丢**
-- 润色输出不带旧译文（英文变了旧中文必然失配）→ 润色落库即清空 `zh`，随后重翻
+- 拼段是无损确定性的：落库即成品，库里已有逐字稿时 PAGE_INFO 直接复用（不重抓不覆盖）
+- 旧版已润色的库存视频照常显示使用；新视频全部走「拼段 + 翻译」新链路
 
 ## 10. 后续调整指南
 
-- **效果不满意（太保守/太激进）**：改 `POLISH_SYSTEM` 里对应的“必须做”或“红线”措辞，重跑「重新润色」即可对比效果；本文档 §2/§3 同步更新
-- **段落太长/太短**：调 prompt 里“一般 2~6 行一段”的表述
-- **术语译法不对**：润色后独立术语请求的规则在 `polishTranscript()` 末段；也可考虑后续做“用户自定义术语表”功能（未实现）
-- **已知局限**（详见 ledger 验收期功能 13 minor）：润色分批无重叠上下文，跨批边界可能截断语义；术语表仅润色时产出，未润色的视频 LLM 翻译无术语表；免费通道润色后需手动点「翻译」
+- **段落太长/太短**：调 `segment.ts` 的三个常量（空隙 1.2s / 2 句 / 1200 字符）
+- **翻译风格不满意**：改 §4 对应措辞 → `llmTranslateBatch()` 的 system 模板
+- **术语译法不对**：改 `extractTerms()` 指令；可考虑后续做“用户自定义术语表”功能（未实现）
+- **已知局限**：无标点 asr 的分段边界靠时间空隙+长度上限（未必总在最佳语义处，但永不破碎）；免费通道无风格控制
