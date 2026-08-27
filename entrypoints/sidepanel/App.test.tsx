@@ -74,6 +74,17 @@ describe('LLM 重翻按钮', () => {
   });
 });
 
+describe('重抓字幕', () => {
+  it('点击后清除库存并触发重新抓取（DELETE_TRANSCRIPT + RETRY_TRANSCRIPT）', async () => {
+    stubBrowser();
+    const { getByTestId, findByText } = render(<App />);
+    await findByText('hello');
+    fireEvent.click(getByTestId('refetch-transcript'));
+    await waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'DELETE_TRANSCRIPT', videoId: 'vid123' }));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RETRY_TRANSCRIPT' });
+  });
+});
+
 describe('LLM 流式显示 / Tab 记忆', () => {
   it('收到 LLM_STREAM 广播显示批号与逐字文本', async () => {
     stubBrowser();

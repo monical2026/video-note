@@ -26,6 +26,7 @@ export interface RouterDeps {
   deleteNote(id: string): Promise<unknown>;
   getSummary(videoId: string): Promise<Summary | undefined>;
   saveSummary(s: Summary): Promise<unknown>;
+  deleteTranscript(videoId: string): Promise<unknown>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<void>;
   getTranscriptWithFallback(input: any): Promise<{ cues: Cue[]; source: string }>;
@@ -138,6 +139,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     // content 直发的心跳/编辑器消息到达 background：静默放行，不再落「未知消息」
     case 'PLAYBACK': return { ok: true };
     case 'OPEN_NOTE_EDITOR': return { ok: true };
+    case 'DELETE_TRANSCRIPT': await deps.deleteTranscript(msg.videoId); return { ok: true };
     case 'RETRY_TRANSCRIPT': deps.sendToActiveTab(msg); return { ok: true };
     default: throw new Error(`未知消息: ${(msg as any).type}`);
   }

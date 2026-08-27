@@ -46,6 +46,7 @@ export const getTranscript = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v)?.cues);
 export const getTranscriptRecord = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v));
+export const deleteTranscript = (videoId: string) => db().then((d) => d.delete('transcripts', videoId));
 /** 原始读写（仅测试用）：绕过归一化层，写入/读取 store 里的原值 */
 export const putTranscriptRaw = (videoId: string, value: unknown) => db().then((d) => d.put('transcripts', value, videoId));
 export const openTranscriptRaw = (videoId: string) => db().then((d) => d.get('transcripts', videoId));

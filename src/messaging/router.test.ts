@@ -8,6 +8,7 @@ const deps = (over: any = {}) => ({
   saveTranscript: vi.fn(), saveVideo: vi.fn(), getVideo: vi.fn(async () => null),
   getNotesByVideo: vi.fn(async () => []), addNote: vi.fn(), deleteNote: vi.fn(),
   getSummary: vi.fn(async () => null), saveSummary: vi.fn(),
+  deleteTranscript: vi.fn(async () => {}),
   getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'free', llm: { baseUrl: 'http://x', apiKey: 'k', model: 'm' }, supadataKey: '', llmKeys: {} })),
   saveSettings: vi.fn(),
   getTranscriptWithFallback: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], source: 'youtube' as const })),
@@ -118,6 +119,12 @@ describe('router', () => {
     await handleMessage({ type: 'TRANSLATE', videoId: 'v' }, d);
     expect(d.runBatchTranslation).toHaveBeenCalled();
     expect(d.extractTerms).not.toHaveBeenCalled();
+  });
+
+  it('DELETE_TRANSCRIPT：清除该视频库存稿（旧润色版/译文/术语表随记录删除）', async () => {
+    const d = deps();
+    await handleMessage({ type: 'DELETE_TRANSCRIPT', videoId: 'v' }, d);
+    expect(d.deleteTranscript).toHaveBeenCalledWith('v');
   });
 
   it('LIST_LIBRARY 返回视频笔记列表', async () => {

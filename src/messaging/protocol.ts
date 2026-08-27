@@ -4,6 +4,7 @@ export type Msg =
   | { type: 'PAGE_INFO'; meta: { videoId: string; title: string; channel: string }; cues: Cue[] }
   | { type: 'GET_VIDEO_DATA'; videoId: string }
   | { type: 'TRANSLATE'; videoId: string; force?: boolean }  // force：忽略已有译文全量重翻（「LLM 重翻」按钮）
+  | { type: 'DELETE_TRANSCRIPT'; videoId: string }            // 清除该视频库存稿（旧润色版/译文/术语表），重抓走新链路
   | { type: 'SAVE_NOTE'; note: Note }
   | { type: 'DELETE_NOTE'; id: string }
   | { type: 'EXPLAIN'; videoId: string; start: number; end: number }

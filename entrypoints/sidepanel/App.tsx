@@ -117,6 +117,17 @@ export function App() {
     }
   }, [currentVideoId, pendingCount, translating, settings.value]);
 
+  /** 重抓字幕：清除该视频库存稿（旧润色版/译文/术语表），重新走抓取→拼段新链路；笔记与摘要保留 */
+  const refetchTranscript = async () => {
+    if (!currentVideoId || translating) return;
+    setTranslateError(''); setStream(null);
+    try {
+      await sendMsg({ type: 'DELETE_TRANSCRIPT', videoId: currentVideoId });
+      cues.value = [];  // 清本地：触发「正在获取字幕…」态，等 PAGE_INFO 广播刷新
+      sendMsg({ type: 'RETRY_TRANSCRIPT' });
+    } catch (e) { setTranslateError(e instanceof Error ? e.message : String(e)); }
+  };
+
   // 无字幕视频的笔记入口：以当前播放位置为窗口打开编辑器（excerpt 为空合法）
   const noteHere = () => {
     noteEditorCtx.value = { start: currentTime.value - 5, end: currentTime.value + 5, excerpt: '' };
@@ -164,6 +175,11 @@ export function App() {
                 用 LLM 重翻
               </button>
             )}
+            <button data-testid="refetch-transcript" disabled={!currentVideoId || translating || !cues.value.length}
+              title="清除本视频已存字幕稿（旧润色版/译文），重新抓取并按新方式拼段；笔记不受影响"
+              onClick={refetchTranscript}>
+              重抓字幕
+            </button>
           </div>
           {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
           {stream && (
