@@ -198,13 +198,6 @@ export function App() {
               onClick={() => resegment('rules')}>
               {resegmenting === 'rules' ? '分段中…' : '规则分段'}
             </button>
-            {settings.value?.llm && (
-              <button data-testid="resegment-ai" disabled={!currentVideoId || translating || !!resegmenting || !cues.value.length}
-                title="大模型只标语义断点（不改任何文字）后拼段：小费用；效果不满意可随时切回规则分段"
-                onClick={() => resegment('ai')}>
-                {resegmenting === 'ai' ? 'AI 分段中…' : 'AI 分段'}
-              </button>
-            )}
           </div>
           {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
           {stream && (
