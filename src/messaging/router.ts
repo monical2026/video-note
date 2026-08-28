@@ -159,6 +159,8 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         final = deps.sentencesToParagraphs(sentences, bps.length ? bps : undefined);
       } else {
         final = deps.mergeCues(raw);
+        // 诊断日志（不含 key/全文）：原料条数 vs 产出段数——段数≈条数说明预切/分句没生效
+        console.info('[video-note] segment', `rules raw=${raw.length} cues -> ${final.length} paras, avg ${Math.round(final.reduce((n, c) => n + c.text.length, 0) / Math.max(1, final.length))} chars`);
       }
       // 文字一字不动：术语表仍适用故保留；新段与旧译文失配 → 落库即清空待重翻；raw 保留
       await deps.saveTranscript(msg.videoId, final, record?.terms, record?.polishedAt, raw);
