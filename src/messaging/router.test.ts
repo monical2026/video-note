@@ -15,7 +15,10 @@ const deps = (over: any = {}) => ({
   googleFreeTranslate: vi.fn(async () => '你好'), runBatchTranslation: vi.fn(async (c: any[]) => ({ translated: c.map((x) => ({ ...x, zh: '译' })), failed: 0 })),
   llmTranslateBatch: vi.fn(async (_c: any, ts: string[]) => ts.map(() => 'LLM译')),
   extractTerms: vi.fn(async () => [{ en: 'closure', zh: '闭包' }]),
-  mergeCues: vi.fn((cs: any[]) => cs),   // 恒等 mock：拼段行为由 segment.test.ts 单测覆盖
+  mergeCues: vi.fn((cs: any[]) => cs.map((c: any) => ({ ...c, via: 'rules' }))),
+  sentencesFromCues: vi.fn((cs: any[]) => cs.map((c: any) => ({ start: c.start, end: c.start + c.dur, text: c.text, complete: true, nextGap: 0 }))),
+  sentencesToParagraphs: vi.fn((ss: any[], bps?: number[]) => (bps?.length ? ss.map((x: any) => ({ start: x.start, dur: x.end - x.start, text: x.text, via: 'ai' })) : ss.map((x: any) => ({ start: x.start, dur: x.end - x.start, text: x.text })))),
+  aiSegmentBreakpoints: vi.fn(async () => [1]),
   explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
   buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
   listVideosWithNotes: vi.fn(async () => [{ video: { videoId: 'v', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 }, noteCount: 3, lastAt: 9 }]), ...over,
@@ -28,7 +31,7 @@ describe('router', () => {
     expect(d.getTranscriptWithFallback).not.toHaveBeenCalled();
     expect(d.mergeCues).toHaveBeenCalledWith([{ start: 0, dur: 1, text: 'hello' }]);
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello' }]);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'hello', via: 'rules' }], undefined, undefined, [{ start: 0, dur: 1, text: 'hello' }]);
     expect(d.broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'PAGE_INFO' }));
     expect(r).toEqual({ ok: true, cueCount: 1 });
   });
@@ -48,7 +51,7 @@ describe('router', () => {
     await handleMessage({ type: 'PAGE_INFO', meta: { videoId: 'v', title: 'T', channel: 'C' }, cues: [] }, d);
     expect(d.getTranscriptWithFallback).toHaveBeenCalledWith({ videoId: 'v', tracks: [] });
     expect(d.saveVideo).toHaveBeenCalled();
-    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x' }]);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', [{ start: 0, dur: 1, text: 'x', via: 'rules' }], undefined, undefined, [{ start: 0, dur: 1, text: 'x' }]);
   });
 
   it('PAGE_INFO 抓取失败时广播 TRANSCRIPT_FAILED 并返回 error', async () => {
@@ -92,7 +95,7 @@ describe('router', () => {
     expect(d.saveTranscript).toHaveBeenCalledWith('v', [
       { start: 0, dur: 1, text: 'a', zh: 'LLM译' },
       { start: 1, dur: 1, text: 'b', zh: 'LLM译' },
-    ], [{ en: 'closure', zh: '闭包' }], undefined);
+    ], [{ en: 'closure', zh: '闭包' }], undefined, undefined);
     expect(r).toEqual({ ok: true, failed: 0 });
   });
 
@@ -119,6 +122,41 @@ describe('router', () => {
     await handleMessage({ type: 'TRANSLATE', videoId: 'v' }, d);
     expect(d.runBatchTranslation).toHaveBeenCalled();
     expect(d.extractTerms).not.toHaveBeenCalled();
+  });
+
+  it('RESEGMENT rules：从 raw 重新规则分段，保留术语表与 raw，译文清空', async () => {
+    const raw = [{ start: 0, dur: 2, text: 'um so' }, { start: 2.1, dur: 2, text: 'closure.' }];
+    const record = { cues: [{ start: 0, dur: 4, text: 'um so closure.', zh: '旧译' }], terms: [{ en: 'closure', zh: '闭包' }], raw };
+    const d = deps({ getTranscriptRecord: vi.fn(async () => record) });
+    const r = await handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'rules' }, d);
+    expect(d.mergeCues).toHaveBeenCalledWith(raw);
+    expect(d.saveTranscript).toHaveBeenCalledWith('v', expect.anything(), [{ en: 'closure', zh: '闭包' }], undefined, raw);
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  it('RESEGMENT ai：句子化→AI 断点→组段；无断点退回规则组段', async () => {
+    const raw = [{ start: 0, dur: 2, text: 'one.' }, { start: 2.1, dur: 2, text: 'Two.' }];
+    const record = { cues: [{ start: 0, dur: 4, text: 'one. Two.' }], terms: [], raw };
+    const d = deps({ getTranscriptRecord: vi.fn(async () => record) });
+    await handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'ai' }, d);
+    expect(d.sentencesFromCues).toHaveBeenCalledWith(raw);
+    expect(d.aiSegmentBreakpoints).toHaveBeenCalled();
+    // mock aiSegmentBreakpoints 返回 [1]（非空）→ 走 AI 断点组段
+    expect(d.sentencesToParagraphs).toHaveBeenCalledWith(expect.anything(), [1]);
+    // aiSegmentBreakpoints 返回空 → 规则组段（不传断点）
+    const d2 = deps({ getTranscriptRecord: vi.fn(async () => record), aiSegmentBreakpoints: vi.fn(async () => []) });
+    await handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'ai' }, d2);
+    expect(d2.sentencesToParagraphs).toHaveBeenCalledWith(expect.anything(), undefined);
+  });
+
+  it('RESEGMENT 无 raw（旧库存）报错；ai 未配 LLM 报错', async () => {
+    const dNoRaw = deps({ getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], terms: [] })) });
+    await expect(handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'rules' }, dNoRaw)).rejects.toThrow('原始碎行');
+    const dNoLlm = deps({
+      getTranscriptRecord: vi.fn(async () => ({ cues: [{ start: 0, dur: 1, text: 'x' }], terms: [], raw: [{ start: 0, dur: 1, text: 'x' }] })),
+      getSettings: vi.fn(async () => ({ displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {} })),
+    });
+    await expect(handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'ai' }, dNoLlm)).rejects.toThrow('配置 LLM');
   });
 
   it('DELETE_TRANSCRIPT：清除该视频库存稿（旧润色版/译文/术语表随记录删除）', async () => {

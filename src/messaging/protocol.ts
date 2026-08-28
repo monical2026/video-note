@@ -5,6 +5,7 @@ export type Msg =
   | { type: 'GET_VIDEO_DATA'; videoId: string }
   | { type: 'TRANSLATE'; videoId: string; force?: boolean }  // force：忽略已有译文全量重翻（「LLM 重翻」按钮）
   | { type: 'DELETE_TRANSCRIPT'; videoId: string }            // 清除该视频库存稿（旧润色版/译文/术语表），重抓走新链路
+  | { type: 'RESEGMENT'; videoId: string; mode: 'rules' | 'ai' }  // 从原始碎行重新分段（规则=零费用 / ai=大模型断点）；文字一字不动，译文失配清空
   | { type: 'SAVE_NOTE'; note: Note }
   | { type: 'DELETE_NOTE'; id: string }
   | { type: 'EXPLAIN'; videoId: string; start: number; end: number }

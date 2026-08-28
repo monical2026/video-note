@@ -1,70 +1,153 @@
 import { describe, expect, it } from 'vitest';
-import { mergeCues } from './segment';
+import { mergeCues, sentencesFromCues, sentencesToParagraphs, type Sentence } from './segment';
 
-describe('mergeCues 程序化拼段', () => {
-  it('文字一字不改只拼接：无停顿无标点的连续碎行合成一段', () => {
-    const cues = [
-      { start: 0, dur: 3, text: 'Google was a founding team that was' },
-      { start: 3, dur: 2, text: 'deeply deeply technical. As the' },
-      { start: 5, dur: 2, text: 'technology got more mature' },
-    ];
-    const out = mergeCues(cues);
-    expect(out).toHaveLength(1);
-    expect(out[0]!.text).toBe('Google was a founding team that was deeply deeply technical. As the technology got more mature');
-    expect(out[0]!.start).toBe(0);
-    expect(out[0]!.dur).toBe(7);
+const cue = (start: number, dur: number, text: string) => ({ start, dur, text });
+const SENT = (over: Partial<Sentence> = {}): Sentence => ({ start: 0, end: 2, text: 'x', complete: true, nextGap: 0, ...over });
+
+describe('层 1 分句：CUT/KEEP 决策表', () => {
+  it('真句尾（. ? !）→ CUT', () => {
+    const s = sentencesFromCues([cue(0, 2, 'first sentence.'), cue(2.2, 2, 'Second one.')]);
+    expect(s).toHaveLength(2);
+    expect(s[0]!.complete).toBe(true);
   });
 
-  it('时间空隙断段：停顿 ≥1.2s 且当前段已有句尾标点时分段', () => {
-    const cues = [
-      { start: 0, dur: 2, text: 'first sentence.' },
-      { start: 2.1, dur: 2, text: 'second sentence.' },   // gap 0.1s：连
-      { start: 6, dur: 2, text: 'after a pause.' },        // gap 1.9s：断
-    ];
-    const out = mergeCues(cues);
-    expect(out).toHaveLength(2);
-    expect(out[0]!.text).toBe('first sentence. second sentence.');
-    expect(out[1]!.text).toBe('after a pause.');
-    expect(out[1]!.start).toBe(6);
+  it('假句号不算句尾：缩写 Dr. / 小数 3.14 / v1.2 → KEEP', () => {
+    const a = sentencesFromCues([cue(0, 2, 'Dr. Smith explains'), cue(2.1, 2, 'the concept.')]);
+    expect(a).toHaveLength(1);
+    const b = sentencesFromCues([cue(0, 2, 'like 3.14 or v1.2 or'), cue(2.1, 2, 'so on.')]);
+    expect(b).toHaveLength(1);
   });
 
-  it('>> 说话人切换强制新段，且剔除 >> 标记本身', () => {
-    const cues = [
-      { start: 0, dur: 2, text: 'host asks a question?' },
-      { start: 2, dur: 2, text: '>> guest answers here' },
-      { start: 4, dur: 2, text: '>> another speaker talks' },
-    ];
-    const out = mergeCues(cues);
-    expect(out.map((c) => c.text)).toEqual(['host asks a question?', 'guest answers here', 'another speaker talks']);
-    expect(out.map((c) => c.start)).toEqual([0, 2, 4]);
+  it('弱边界（, ; : — …）/ 未闭合引号 / 续接词结尾 → KEEP', () => {
+    expect(sentencesFromCues([cue(0, 2, 'here is the thing:'), cue(2.1, 2, 'closures.')])).toHaveLength(1);
+    expect(sentencesFromCues([cue(0, 2, 'we talked about'), cue(2.1, 2, 'this before.')])).toHaveLength(1); // of/about 结尾续接
+    expect(sentencesFromCues([cue(0, 2, 'he said " closures'), cue(2.1, 2, 'are great."')])).toHaveLength(1);
   });
 
-  it('句数目标：攒满 2 个句尾标点即分段（无空隙也断）', () => {
-    const cues = [
-      { start: 0, dur: 1, text: 'sentence one.' },
-      { start: 1, dur: 1, text: 'sentence two.' },        // 已 2 句：断
-      { start: 2, dur: 1, text: 'sentence three.' },
-    ];
-    const out = mergeCues(cues);
-    expect(out.map((c) => c.text)).toEqual(['sentence one. sentence two.', 'sentence three.']);
+  it('下一条以续接词开头且前一条无句号 → KEEP', () => {
+    expect(sentencesFromCues([cue(0, 2, 'closures capture'), cue(2.1, 2, 'and keep state')])).toHaveLength(1);
   });
 
-  it('无标点 asr：靠超长保护断段（1200 字符上限）', () => {
-    const long = 'word '.repeat(60).trim();               // 300 字符/行
-    const cues = Array.from({ length: 8 }, (_, i) => ({ start: i * 2, dur: 2, text: long })); // 2400 字符连续无标点
-    const out = mergeCues(cues);
-    expect(out.length).toBeGreaterThanOrEqual(2);
-    // 保护线生效：段长 ≤ 上限 + 单行长度（断段粒度是整行，1200 + 300）
-    for (const seg of out) expect(seg.text.length).toBeLessThanOrEqual(1200 + long.length);
+  it('无标点 + gap < 0.7s → KEEP（连说不切）', () => {
+    expect(sentencesFromCues([cue(0, 2, 'so closures'), cue(2.05, 2, 'capture state')])).toHaveLength(1);
+  });
+
+  it('候选断句：无标点 + gap≥1.5s + 已 ≥8 词 + 下一条大写开头 → CUT', () => {
+    const s = sentencesFromCues([
+      cue(0, 3, 'um so we have this concept called closures here'),
+      cue(5, 2, 'They capture state'),   // gap=2.0，They 大写开头，前累计 10 词
+    ]);
+    expect(s).toHaveLength(2);
+  });
+
+  it('候选断句拒绝：gap 1.5s 但下一条小写开头 → KEEP（保守）', () => {
+    const s = sentencesFromCues([
+      cue(0, 3, 'um so we have this concept called closures here'),
+      cue(5, 2, 'they capture state'),   // 小写开头 → 不切
+    ]);
+    expect(s).toHaveLength(1);
+  });
+
+  it('候选断句拒绝：累计不足 8 词 → KEEP', () => {
+    const s = sentencesFromCues([
+      cue(0, 1, 'so closures'),
+      cue(3, 2, 'They capture state'),   // gap=2.0 但首段仅 2 词
+    ]);
+    expect(s).toHaveLength(1);
+  });
+
+  it('>> 说话人切换 → CUT，>> 标记剔除并记录 speakerBreak', () => {
+    const s = sentencesFromCues([
+      cue(0, 2, 'host asks a question?'),
+      cue(2.1, 2, '>> guest answers here'),
+    ]);
+    expect(s).toHaveLength(2);
+    expect(s.map((x) => x.text)).toEqual(['host asks a question?', 'guest answers here']);
+    expect(s[1]!.speakerBreak).toBe(true);
+  });
+});
+
+describe('层 2 组段：软限制（只在句尾换，绝不句中切）', () => {
+  it('段小于 60 字符：即使满足换段条件也继续并入', () => {
+    const sents = [
+      SENT({ text: 'A.'.padEnd(20, 'x'), complete: true }),
+      SENT({ text: 'B.'.padEnd(20, 'x'), complete: true }),
+      SENT({ text: 'C.'.padEnd(20, 'x'), complete: true }),
+    ];
+    // 每句 ~21 字符，三句共 65 —— 前两次检查段 <60 不换，第三次 3 句满换
+    const p = sentencesToParagraphs(sents);
+    expect(p).toHaveLength(1);
+    expect(p[0]!.text).toContain('A.');
+  });
+
+  it('已有 2 个完整句且 ≥120 字符 → 换段', () => {
+    const s1 = SENT({ text: 'a'.repeat(70), complete: true, start: 0, end: 3 });
+    const s2 = SENT({ text: 'b'.repeat(70), complete: true, start: 3.2, end: 6 });
+    const s3 = SENT({ text: 'c'.repeat(70), complete: true, start: 6.2, end: 9 });
+    const p = sentencesToParagraphs([s1, s2, s3]);
+    expect(p).toHaveLength(2);
+    expect(p[0]!.text).toBe(`${s1.text} ${s2.text}`);
+    expect(p[1]!.text).toBe(s3.text);
+  });
+
+  it('句后停顿 ≥2.8s → 换段', () => {
+    const s1 = SENT({ text: 'a'.repeat(70), complete: true, start: 0, end: 3, nextGap: 3.5 });
+    const s2 = SENT({ text: 'b'.repeat(70), complete: true, start: 6.5, end: 9 });
+    const p = sentencesToParagraphs([s1, s2]);
+    expect(p).toHaveLength(2);
+  });
+
+  it('软上限：段超 320 字符后在下一个完整句尾换（长句本身不硬切）', () => {
+    const long = SENT({ text: 'x'.repeat(400), complete: true, start: 0, end: 25, nextGap: 0.2 }); // 单句 400 字符 25 秒：不切
+    const next = SENT({ text: 'y'.repeat(50), complete: true, start: 25.5, end: 28 });
+    const p = sentencesToParagraphs([long, next]);
+    // 第一句后段已 >320 且是完整句尾 → 换；第二句自成段
+    expect(p).toHaveLength(2);
+    expect(p[0]!.text).toBe(long.text);
+    expect(p[1]!.text).toBe(next.text);
+  });
+
+  it('>> 开头的句子强制换段', () => {
+    const s1 = SENT({ text: 'a'.repeat(80), complete: true, start: 0, end: 3 });
+    const s2 = SENT({ text: 'b'.repeat(30), complete: true, start: 3.2, end: 5, speakerBreak: true });
+    const p = sentencesToParagraphs([s1, s2]);
+    expect(p).toHaveLength(2);
+  });
+
+  it('AI 断点（breakpoints）指定处强制换段', () => {
+    const sents = [
+      SENT({ text: 'a'.repeat(80), start: 0, end: 3 }),
+      SENT({ text: 'b'.repeat(80), start: 3.2, end: 6 }),
+      SENT({ text: 'c'.repeat(80), start: 6.2, end: 9 }),
+    ];
+    const p = sentencesToParagraphs(sents, [1, 3]);   // 第 1、3 句后换
+    expect(p.map((x) => x.text)).toEqual([sents[0]!.text, `${sents[1]!.text} ${sents[2]!.text}`]);
+  });
+});
+
+describe('端到端 mergeCues', () => {
+  it('Whisper 无标点场景：候选断句 + 组段软限制 → 段落 2~3 句量级，文字无损', () => {
+    // 8 个无标点碎行，每两行之间 gap 2s（触发候选断句），下一行大写开头
+    const lines = [
+      'um so today we are going to talk about closures in javascript',
+      'They capture variables from outer scope',
+      'And that means the function remembers',
+      'This is really useful for callbacks',
+      'Now let me show you a quick example',
+      'Here we create a counter function',
+      'It returns another function that increments',
+      'So the inner function keeps access to count',
+    ];
+    const cues = lines.map((t, i) => cue(i * 5, 3, t));   // 3s 内容 + 2s gap
+    const p = mergeCues(cues);
+    expect(p.length).toBeGreaterThanOrEqual(2);           // 不再是一大段
+    for (const seg of p) expect(seg.text.length).toBeLessThanOrEqual(400);  // 软上限生效
     // 文字无损：总词数不变
-    expect(out.reduce((s, c) => s + c.text.split(' ').length, 0)).toBe(cues.reduce((s, c) => s + c.text.split(' ').length, 0));
+    expect(p.reduce((n, x) => n + x.text.split(' ').length, 0)).toBe(lines.reduce((n, t) => n + t.split(' ').length, 0));
   });
 
-  it('空行与纯文本不变：zh 字段不带入、末尾自然收段', () => {
-    const cues = [
-      { start: 0, dur: 1, text: 'only one line' },
-    ];
-    expect(mergeCues(cues)).toEqual([{ start: 0, dur: 1, text: 'only one line' }]);
+  it('空输入与单行', () => {
     expect(mergeCues([])).toEqual([]);
+    expect(mergeCues([cue(0, 2, 'only one line')])).toEqual([{ start: 0, dur: 2, text: 'only one line' }]);
   });
 });

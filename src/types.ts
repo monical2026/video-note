@@ -26,7 +26,7 @@ export interface Summary {
 }
 export interface LlmConfig { baseUrl: string; apiKey: string; model: string; }
 export interface Term { en: string; zh: string; }   // 术语表：全片统一译法（润色阶段产出，翻译批次复用）
-export interface TranscriptRecord { cues: Cue[]; terms?: Term[]; polishedAt?: number; }  // transcripts store 存储形状（旧数据是纯 Cue[] 数组；polishedAt=已润色标记，防重复润色扣费）
+export interface TranscriptRecord { cues: Cue[]; terms?: Term[]; polishedAt?: number; raw?: Cue[]; }  // transcripts store 存储形状（旧数据是纯 Cue[] 数组；raw=原始碎行，重新分段的原料）
 export interface Settings {
   displayMode: DisplayMode;
   translateChannel: 'free' | 'llm';

@@ -1,6 +1,7 @@
 import type { Msg, VideoData } from './protocol';
 import type { Cue, Note, Settings, Summary, Term, VideoMeta } from '../types';
 import type { OnStream } from '../services/llm-translate';
+import type { Sentence } from '../services/segment';
 
 /** LLM 流式进度 → 面板广播：80ms 节流（delta 高频，UI 只需最新帧）；批号变化强制发（新批立即可见） */
 function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
@@ -17,8 +18,8 @@ function makeStreamBroadcaster(broadcast: (msg: Msg) => void): OnStream {
 
 export interface RouterDeps {
   getTranscript(videoId: string): Promise<Cue[] | undefined>;
-  getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[]; polishedAt?: number } | undefined>;
-  saveTranscript(videoId: string, cues: Cue[], terms?: Term[], polishedAt?: number): Promise<unknown>;
+  getTranscriptRecord(videoId: string): Promise<{ cues: Cue[]; terms?: Term[]; polishedAt?: number; raw?: Cue[] } | undefined>;
+  saveTranscript(videoId: string, cues: Cue[], terms?: Term[], polishedAt?: number, raw?: Cue[]): Promise<unknown>;
   saveVideo(meta: any): Promise<unknown>;
   getVideo(videoId: string): Promise<any>;
   getNotesByVideo(videoId: string): Promise<Note[]>;
@@ -34,7 +35,10 @@ export interface RouterDeps {
   runBatchTranslation(cues: Cue[], fn: (t: string) => Promise<string>, opts: any): Promise<{ translated: Cue[]; failed: number }>;
   llmTranslateBatch(config: any, texts: string[], terms?: Term[], onStream?: OnStream): Promise<string[]>;
   extractTerms(config: any, cues: Cue[]): Promise<Term[]>;
-  mergeCues(cues: Cue[]): Cue[];   // 程序化拼段（碎行→段落，文字原样）
+  mergeCues(cues: Cue[]): Cue[];   // 规则分段全流程（层1分句+层2组段）
+  sentencesFromCues(cues: Cue[]): Sentence[];
+  sentencesToParagraphs(sentences: Sentence[], breakpoints?: number[]): Cue[];
+  aiSegmentBreakpoints(config: any, sentences: { text: string }[], onStream?: OnStream): Promise<number[]>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildFusedMarkdown(input: any): string;
@@ -66,10 +70,10 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
           return { error: e instanceof Error ? e.message : String(e) };
         }
       }
-      // 程序化拼段：碎行→段落（文字一字不改，零 LLM 零费用）后落库
+      // 程序化拼段：碎行→段落（文字一字不改，零 LLM 零费用）后落库；raw 保留原始碎行（重新分段的原料）
       const final = deps.mergeCues(cues);
       await deps.saveVideo({ ...msg.meta, url: `https://www.youtube.com/watch?v=${msg.meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() });
-      await deps.saveTranscript(msg.meta.videoId, final);
+      await deps.saveTranscript(msg.meta.videoId, final, undefined, undefined, cues);
       // 处理完成后广播，通知 sidepanel 刷新（sidepanel 依据 sender.tab 区分原始消息）
       deps.broadcast(msg);
       return { ok: true, cueCount: final.length };
@@ -104,7 +108,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
-      await deps.saveTranscript(msg.videoId, merged, terms, record?.polishedAt);
+      await deps.saveTranscript(msg.videoId, merged, terms, record?.polishedAt, record?.raw);
       return { ok: true, failed: out.failed };
     }
     case 'SAVE_NOTE': await deps.addNote(msg.note); return { ok: true };
@@ -140,6 +144,24 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     case 'PLAYBACK': return { ok: true };
     case 'OPEN_NOTE_EDITOR': return { ok: true };
     case 'DELETE_TRANSCRIPT': await deps.deleteTranscript(msg.videoId); return { ok: true };
+    case 'RESEGMENT': {
+      const record = await deps.getTranscriptRecord(msg.videoId);
+      const raw = record?.raw;
+      if (!raw?.length) throw new Error('无原始碎行（旧库存视频请先「重抓字幕」补充原料）');
+      let final: Cue[];
+      if (msg.mode === 'ai') {
+        const s = await deps.getSettings();
+        if (!s.llm) throw new Error('AI 分段需要先配置 LLM');
+        const sentences = deps.sentencesFromCues(raw);
+        const bps = await deps.aiSegmentBreakpoints(s.llm, sentences, makeStreamBroadcaster(deps.broadcast));
+        final = deps.sentencesToParagraphs(sentences, bps.length ? bps : undefined);
+      } else {
+        final = deps.mergeCues(raw);
+      }
+      // 文字一字不动：术语表仍适用故保留；新段与旧译文失配 → 落库即清空待重翻；raw 保留
+      await deps.saveTranscript(msg.videoId, final, record?.terms, record?.polishedAt, raw);
+      return { ok: true, cueCount: final.length };
+    }
     case 'RETRY_TRANSCRIPT': deps.sendToActiveTab(msg); return { ok: true };
     default: throw new Error(`未知消息: ${(msg as any).type}`);
   }

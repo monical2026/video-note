@@ -14,6 +14,7 @@ const TABS = [
 
 export function App() {
   const [translating, setTranslating] = useState(false);
+  const [resegmenting, setResegmenting] = useState<'rules' | 'ai' | null>(null);
   const [translateError, setTranslateError] = useState('');
   const [stream, setStream] = useState<StreamInfo | null>(null);
   const [fetchTimedOut, setFetchTimedOut] = useState(false);
@@ -117,6 +118,18 @@ export function App() {
     }
   }, [currentVideoId, pendingCount, translating, settings.value]);
 
+  /** 重新分段：从库存的原始碎行重新拼段（规则=零费用 / AI=大模型断点）；文字一字不动，译文失配清空待重翻 */
+  const resegment = async (mode: 'rules' | 'ai') => {
+    if (!currentVideoId || translating || resegmenting) return;
+    setResegmenting(mode); setTranslateError(''); setStream(null);
+    try {
+      await sendMsg({ type: 'RESEGMENT', videoId: currentVideoId, mode });
+      await loadVideoData(currentVideoId);
+    } catch (e) {
+      setTranslateError(e instanceof Error ? e.message : String(e));
+    } finally { setResegmenting(null); setStream(null); }
+  };
+
   /** 重抓字幕：清除该视频库存稿（旧润色版/译文/术语表），重新走抓取→拼段新链路；笔记与摘要保留 */
   const refetchTranscript = async () => {
     if (!currentVideoId || translating) return;
@@ -180,6 +193,18 @@ export function App() {
               onClick={refetchTranscript}>
               重抓字幕
             </button>
+            <button data-testid="resegment-rules" disabled={!currentVideoId || translating || !!resegmenting || !cues.value.length}
+              title="按两层规则（分句→组段）从原始碎行重新拼段：零费用、即时；文字一字不动，译文需重翻"
+              onClick={() => resegment('rules')}>
+              {resegmenting === 'rules' ? '分段中…' : '规则分段'}
+            </button>
+            {settings.value?.llm && (
+              <button data-testid="resegment-ai" disabled={!currentVideoId || translating || !!resegmenting || !cues.value.length}
+                title="大模型只标语义断点（不改任何文字）后拼段：小费用；效果不满意可随时切回规则分段"
+                onClick={() => resegment('ai')}>
+                {resegmenting === 'ai' ? 'AI 分段中…' : 'AI 分段'}
+              </button>
+            )}
           </div>
           {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
           {stream && (

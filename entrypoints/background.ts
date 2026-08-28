@@ -3,8 +3,8 @@ import { getSettings, saveSettings } from '../src/storage/settings';
 import { getTranscriptWithFallback } from '../src/services/transcript';
 import { fetchSupadataTranscript } from '../src/adapters/supadata';
 import { googleFreeTranslate, runBatchTranslation } from '../src/services/translate';
-import { extractTerms, llmTranslateBatch } from '../src/services/llm-translate';
-import { mergeCues } from '../src/services/segment';
+import { aiSegmentBreakpoints, extractTerms, llmTranslateBatch } from '../src/services/llm-translate';
+import { mergeCues, sentencesFromCues, sentencesToParagraphs } from '../src/services/segment';
 import { explainConfusion, summarize } from '../src/services/ai';
 import { buildFusedMarkdown } from '../src/services/export';
 import { handleMessage, type RouterDeps } from '../src/messaging/router';
@@ -27,7 +27,9 @@ export default defineBackground(() => {
   const deps: RouterDeps = {
     ...db, getSettings, saveSettings,
     getTranscriptWithFallback: getTranscriptBound,
-    googleFreeTranslate, runBatchTranslation, llmTranslateBatch, extractTerms, mergeCues, explainConfusion, summarize, buildFusedMarkdown,
+    googleFreeTranslate, runBatchTranslation, llmTranslateBatch, extractTerms,
+    mergeCues, sentencesFromCues, sentencesToParagraphs, aiSegmentBreakpoints,
+    explainConfusion, summarize, buildFusedMarkdown,
     broadcast: (msg) => { browser.runtime.sendMessage(msg).catch(() => {}); },
     sendToActiveTab: (msg) => { browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => tab && browser.tabs.sendMessage(tab.id!, msg)).catch(() => {}); },
   };

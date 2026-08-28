@@ -74,7 +74,7 @@ describe('LLM 重翻按钮', () => {
   });
 });
 
-describe('重抓字幕', () => {
+describe('重抓字幕 / 重新分段', () => {
   it('点击后清除库存并触发重新抓取（DELETE_TRANSCRIPT + RETRY_TRANSCRIPT）', async () => {
     stubBrowser();
     const { getByTestId, findByText } = render(<App />);
@@ -82,6 +82,25 @@ describe('重抓字幕', () => {
     fireEvent.click(getByTestId('refetch-transcript'));
     await waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'DELETE_TRANSCRIPT', videoId: 'vid123' }));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RETRY_TRANSCRIPT' });
+  });
+
+  it('「规则分段」与「AI 分段」按钮：点击发送对应 mode 的 RESEGMENT；未配 LLM 时 AI 按钮不显示', async () => {
+    stubBrowser();   // 默认 settings.llm = null → AI 按钮隐藏
+    const { getByTestId, queryByTestId, findByText } = render(<App />);
+    await findByText('hello');
+    expect(queryByTestId('resegment-ai')).toBeNull();
+    fireEvent.click(getByTestId('resegment-rules'));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RESEGMENT', videoId: 'vid123', mode: 'rules' });
+  });
+
+  it('配置 LLM 后「AI 分段」显示且可点击', async () => {
+    settings.llm = { baseUrl: 'http://x/v1', apiKey: 'k', model: 'm' };
+    stubBrowser();
+    const { getByTestId, findByText } = render(<App />);
+    await findByText('hello');
+    fireEvent.click(getByTestId('resegment-ai'));
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RESEGMENT', videoId: 'vid123', mode: 'ai' });
+    settings.llm = null;
   });
 });
 

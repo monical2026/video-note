@@ -86,3 +86,46 @@ export async function extractTerms(config: LlmConfig, cues: Cue[]): Promise<Term
   for (const t of r?.terms ?? []) if (t?.en && t?.zh) seen.set(String(t.en), String(t.zh));
   return [...seen.entries()].map(([en, zh]) => ({ en, zh }));
 }
+
+// ===== AI 分段：断点句号标记（零改写，输出仅数字）=====
+const SEGMENT_BATCH_SENTS = 80;   // 句子级分批（句子比碎行长，批可放大）
+
+const SEGMENT_SYSTEM = `你是英文字幕的分段编辑。用户给出带全局编号的完整句子（一行一句）。判断语义边界：哪些连续的句子在讲同一个意思。
+
+分段标准：
+- 一段 = 表达同一个意思 / 同一个小话题的 2~5 句话
+- 话题讲完、明显换话题、或说话人切换处断段
+- 段不要过长（屏幕上约 3~5 行合适），也不要过碎（单句不单独成段，除非话题独立完整）
+- 以 and / but / because / which / that 等连接词开头或结尾悬空的句子，必须与相邻句同段（句子没说完，绝不可切断）
+
+只输出断点句号：在哪些句之后换段，一行一个数字（该句之后新起一段）。不要改写任何文字，不要输出数字以外的任何内容。`;
+
+/**
+ * AI 分段：句子序列 → 断点句号列表（该句之后换段，全局 1 起编号）。
+ * 大模型只贴便签不碰文字；无有效断点返回空数组（调用方退回规则组段）。
+ */
+export async function aiSegmentBreakpoints(
+  config: LlmConfig,
+  sentences: { text: string }[],
+  onStream?: OnStream,
+): Promise<number[]> {
+  const out: number[] = [];
+  const batchTotal = Math.max(1, Math.ceil(sentences.length / SEGMENT_BATCH_SENTS));
+  for (let i = 0; i < sentences.length; i += SEGMENT_BATCH_SENTS) {
+    const batch = sentences.slice(i, i + SEGMENT_BATCH_SENTS);
+    const numbered = batch.map((s, j) => `${i + j + 1}. ${s.text}`).join('\n');
+    const raw = await chatStream(config, [
+      { role: 'system', content: SEGMENT_SYSTEM },
+      { role: 'user', content: numbered },
+    ], (acc) => onStream?.({ batch: Math.floor(i / SEGMENT_BATCH_SENTS) + 1, batchTotal, text: acc }));
+    const seen = new Set<number>();
+    for (const line of raw.split('\n')) {
+      const m = line.match(/^\s*(\d+)\s*$/);
+      if (!m) continue;
+      const n = Number(m[1]);
+      if (n >= 1 && n <= sentences.length) seen.add(n);   // 越界句号忽略
+    }
+    out.push(...seen);
+  }
+  return [...new Set(out)].sort((a, b) => a - b);
+}
