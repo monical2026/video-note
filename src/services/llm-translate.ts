@@ -118,12 +118,15 @@ export async function aiSegmentBreakpoints(
       { role: 'system', content: SEGMENT_SYSTEM },
       { role: 'user', content: numbered },
     ], (acc) => onStream?.({ batch: Math.floor(i / SEGMENT_BATCH_SENTS) + 1, batchTotal, text: acc }));
+    // 解析容错：模型可能输出每行一个数字、逗号/空格分隔、或夹带说明文字——
+    // 提取行内全部独立数字（此前只认"整行纯数字"，输出形态稍偏就解析出 0 个断点退回规则，
+    // 表现为「AI 分段与规则分段一模一样」）
     const seen = new Set<number>();
     for (const line of raw.split('\n')) {
-      const m = line.match(/^\s*(\d+)\s*$/);
-      if (!m) continue;
-      const n = Number(m[1]);
-      if (n >= 1 && n <= sentences.length) seen.add(n);   // 越界句号忽略
+      for (const m of line.matchAll(/\b\d{1,4}\b/g)) {
+        const n = Number(m[0]);
+        if (n >= 1 && n <= sentences.length) seen.add(n);   // 越界句号忽略
+      }
     }
     out.push(...seen);
   }

@@ -102,6 +102,14 @@ describe('AI 分段断点 aiSegmentBreakpoints', () => {
     expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([3]);
   });
 
+  it('解析容错：逗号/空格分隔或夹带说明文字的数字也能提取（根因：整行纯数字解析出 0 断点退回规则）', async () => {
+    // 用户实测「AI 分段与规则一模一样」的根因复现：模型输出逗号分隔
+    stubStream('2, 4, 5');
+    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([2, 4, 5]);
+    stubStream('Break after sentence 2 and 4.');
+    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([2, 4]);
+  });
+
   it('prompt 含分段标准与"只输出数字"约束', async () => {
     const f = stubStream('2');
     await aiSegmentBreakpoints(cfg, sents);

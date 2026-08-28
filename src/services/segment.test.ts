@@ -126,6 +126,26 @@ describe('层 2 组段：软限制（只在句尾换，绝不句中切）', () =
 });
 
 describe('端到端 mergeCues', () => {
+  it('Whisper 长条形态（单条 content 内挤多句）：条内预切后产出小段，时间分摊且文字无损', () => {
+    // 根因复现（2026-08-28 用户实测）：Supadata 单条 content 是一大段话——
+    // 不预切时整条成为"一个句子"，组段层"长句不硬切"→ 一大段一大段
+    const long1 = 'So today we are going to talk about closures. A closure is a function that remembers its outer scope. They are super useful for callbacks.';
+    const long2 = 'Now let me show you a quick example. Here we create a counter. It returns an incrementing function.';
+    const p = mergeCues([
+      cue(0, 15, long1),    // 单条 15 秒 3 句
+      cue(16, 12, long2),   // 单条 12 秒 3 句
+    ]);
+    // 预切生效：不是两大段，而是 2~3 句的小段
+    expect(p.length).toBeGreaterThanOrEqual(3);
+    for (const seg of p) expect(seg.text.length).toBeLessThanOrEqual(340);
+    // 文字无损（忽略空白差异）
+    const joined = p.map((x) => x.text).join(' ').replace(/\s+/g, ' ');
+    expect(joined).toBe(`${long1} ${long2}`);
+    // 时间在原始范围内
+    expect(p[0]!.start).toBe(0);
+    expect(p.at(-1)!.start + p.at(-1)!.dur).toBeLessThanOrEqual(28.01);
+  });
+
   it('Whisper 无标点场景：候选断句 + 组段软限制 → 段落 2~3 句量级，文字无损', () => {
     // 8 个无标点碎行，每两行之间 gap 2s（触发候选断句），下一行大写开头
     const lines = [

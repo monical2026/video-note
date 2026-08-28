@@ -154,6 +154,8 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         if (!s.llm) throw new Error('AI 分段需要先配置 LLM');
         const sentences = deps.sentencesFromCues(raw);
         const bps = await deps.aiSegmentBreakpoints(s.llm, sentences, makeStreamBroadcaster(deps.broadcast));
+        // 诊断日志（不含 key/全文）：断点为 0 说明模型输出未解析到 → 已退回规则组段
+        console.info('[video-note] segment', `ai breakpoints=${bps.length}/${sentences.length} sentences${bps.length ? '' : ' (fallback to rules)'}`);
         final = deps.sentencesToParagraphs(sentences, bps.length ? bps : undefined);
       } else {
         final = deps.mergeCues(raw);

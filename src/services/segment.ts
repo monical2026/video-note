@@ -40,12 +40,41 @@ export interface Sentence {
 }
 
 /**
+ * 条内预切：Whisper 等转写服务的单条 content 可能内含多个句子（一条挤几句话），
+ * 决策表只在条间判断、从不拆条内 → 整条巨块被当成"一个句子"进组段 → 一大段一大段。
+ * 这里先把含多个句号的条按句号切开，时间按字符比例线性分摊（近似）；
+ * 假句号误切（e.g.）会被层 1 的 KEEP 规则拼回（切开的小片时间连续、gap≈0）。
+ */
+function preSplit(cues: Cue[]): Cue[] {
+  const out: Cue[] = [];
+  for (const c of cues) {
+    const text = c.text.trim();
+    // 切点要求句尾符后跟空白或结尾（前瞻不消耗）：排除 3.14 / v1.2 这类点后无空格的小数/版本号；
+    // 缩写假句号（Dr.）可能被切开，由层 1 的 KEEP 规则拼回（切开小片时间连续 gap≈0）
+    const parts = text.match(/[^.!?]+[.!?]+["')”’]?(?=\s|$)/g);
+    if (!parts || parts.length <= 1) { out.push(c); continue; }
+    // 尾部可能无句号（如 "Dr. Smith explains" 的 "Smith explains"）——match 不含它，必须补上防丢字
+    const consumed = parts.reduce((n, p) => n + p.length, 0);
+    if (consumed < text.length) parts.push(text.slice(consumed));
+    const totalChars = parts.reduce((n, p) => n + p.length, 0);
+    let acc = 0;
+    for (const p of parts) {
+      const frac = p.length / totalChars;
+      out.push({ start: c.start + acc * c.dur, dur: frac * c.dur, text: p.trim() });
+      acc += frac;
+    }
+  }
+  return out;
+}
+
+/**
  * 层 1：碎行 → 句子。对每对相邻碎行按优先级决策 KEEP/CUT：
  *  1 >> 切换 → CUT；2 真句尾 → CUT；3 弱边界/续接词结尾/未闭合 → KEEP；
  *  4 下一条续接词开头（前无句号）→ KEEP；5 gap<0.7s → KEEP；
  *  6 gap≥1.5s → 候选断句三条件；7 默认 KEEP（保守）
  */
-export function sentencesFromCues(cues: Cue[]): Sentence[] {
+export function sentencesFromCues(rawCues: Cue[]): Sentence[] {
+  const cues = preSplit(rawCues);   // 条内预切：句子边界回到条间维度
   const out: Sentence[] = [];
   let buf: { start: number; end: number; text: string; speakerStart: boolean }[] = [];
   const flush = () => {
