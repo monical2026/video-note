@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Cue, DisplayMode } from '../../src/types';
 import { formatTime } from '../../src/utils/time';
 
@@ -7,16 +7,61 @@ export function TranscriptView(props: {
   onSeek: (t: number) => void; onSelect: (cues: Cue[]) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // 当前句变化时跟随滚动；block:'nearest' 仅在当前句离开视口时才滚动
-  useEffect(() => {
-    const el = containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
-    // jsdom 等环境无 scrollIntoView，存在性守卫
-    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [props.currentTime]);
-  const isCurrent = (c: Cue, i: number) => {
-    const next = props.cues[i + 1];
-    return props.currentTime >= c.start && (!next || props.currentTime < next.start);
+  // 用户滚动浏览时暂停自动跟随（2026-09 用户需求：滚动不应被播放心跳抢占；暂停视频才能看的问题根除）
+  const [userScroll, setUserScroll] = useState(false);
+  const [q, setQ] = useState('');
+  const [matchIdx, setMatchIdx] = useState(0);
+
+  const activeEl = () => containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
+  const activeVisible = () => {
+    const c = containerRef.current, el = activeEl();
+    if (!c || !el || typeof el.getBoundingClientRect !== 'function') return true;   // 无 rect 环境：保守视为可见
+    const cr = c.getBoundingClientRect(), er = el.getBoundingClientRect();
+    return er.bottom > cr.top && er.top < cr.bottom;
   };
+
+  // 播放心跳跟随：用户滚动时跳过，且滚回当前句附近自动恢复跟随
+  useEffect(() => {
+    const el = activeEl();
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    if (userScroll) {
+      if (activeVisible()) setUserScroll(false);   // 自动恢复
+      return;
+    }
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [props.currentTime, userScroll]);
+
+  // 全文搜索：中英都搜、不区分大小写（2026-09 用户需求；跳转只定位逐字稿不动视频）
+  const ql = q.trim().toLowerCase();
+  const matches = useMemo(() => (!ql ? [] : props.cues.map((_, i) => i).filter((i) => {
+    const c = props.cues[i]!;
+    return c.text.toLowerCase().includes(ql) || c.zh?.toLowerCase().includes(ql);
+  })), [ql, props.cues]);
+
+  const jumpToMatch = (idx: number) => {
+    if (!matches.length) return;
+    const wrapped = (idx + matches.length) % matches.length;
+    setMatchIdx(wrapped);
+    setUserScroll(true);   // 浏览搜索结果期间暂停自动跟随（可点「当前位置」恢复）
+    const el = containerRef.current?.querySelector(`[data-index="${matches[wrapped]}"]`) as HTMLElement | null | undefined;
+    el?.scrollIntoView?.({ block: 'center' });
+  };
+
+  /** 按搜索词拆分文本，命中段渲染为蓝底 <mark> */
+  const hl = (text: string) => {
+    if (!ql) return text;
+    const lower = text.toLowerCase();
+    const parts: any[] = [];
+    let from = 0, at = lower.indexOf(ql);
+    while (at !== -1) {
+      if (at > from) parts.push(text.slice(from, at));
+      parts.push(<mark>{text.slice(at, at + ql.length)}</mark>);
+      from = at + ql.length; at = lower.indexOf(ql, from);
+    }
+    if (from < text.length) parts.push(text.slice(from));
+    return parts.length ? parts : text;
+  };
+
   const onMouseUp = () => {
     const sel = window.getSelection();
     const text = sel?.toString().trim();
@@ -34,16 +79,43 @@ export function TranscriptView(props: {
     const picked = props.cues.slice(from, to + 1);
     if (picked.length) props.onSelect(picked);
   };
+  const isCurrent = (c: Cue, i: number) => {
+    const next = props.cues[i + 1];
+    return props.currentTime >= c.start && (!next || props.currentTime < next.start);
+  };
   return (
-    <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}>
-      {props.cues.map((c, i) => (
-        <div key={i} data-testid={`cue-${i}`} data-index={i} class={`cue ${isCurrent(c, i) ? 'active' : ''}`}
-          onClick={() => { if (window.getSelection()?.toString()) return; props.onSeek(c.start); }}>
-          <button data-testid={`ts-${i}`} class="ts" onClick={(e) => { e.stopPropagation(); props.onSeek(c.start); }}>{formatTime(c.start)}</button>
-          {props.mode !== 'zh' && <div class="en">{c.text}</div>}
-          {props.mode !== 'en' && <div class="zh">{c.zh ?? '（未翻译）'}</div>}
+    <div class="transcript-outer">
+      <div class="search-bar" data-testid="search-bar">
+        <input data-testid="search-input" type="text" placeholder="搜索中英文…" value={q}
+          onInput={(e) => { setQ((e.target as HTMLInputElement).value); setMatchIdx(0); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') jumpToMatch(matchIdx + 1); }} />
+        {ql && <span class="match-count" data-testid="match-count">{matches.length ? `${matchIdx + 1}/${matches.length}` : '0/0'}</span>}
+        <button data-testid="match-prev" title="上一个匹配" disabled={!matches.length} onClick={() => jumpToMatch(matchIdx - 1)}>↑</button>
+        <button data-testid="match-next" title="下一个匹配（回车同）" disabled={!matches.length} onClick={() => jumpToMatch(matchIdx + 1)}>↓</button>
+      </div>
+      <div class="transcript-wrap">
+        <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}
+          onWheel={() => setUserScroll(true)} onTouchMove={() => setUserScroll(true)}>
+          {props.cues.map((c, i) => (
+            <div key={i} data-testid={`cue-${i}`} data-index={i}
+              class={`cue ${isCurrent(c, i) ? 'active' : ''} ${ql && matches.includes(i) ? 'hit' : ''}`}
+              onClick={() => { if (window.getSelection()?.toString()) return; props.onSeek(c.start); }}>
+              <button data-testid={`ts-${i}`} class="ts" onClick={(e) => { e.stopPropagation(); props.onSeek(c.start); }}>{formatTime(c.start)}</button>
+              {props.mode !== 'zh' && <div class="en">{hl(c.text)}</div>}
+              {props.mode !== 'en' && <div class="zh">{hl(c.zh ?? '（未翻译）')}</div>}
+            </div>
+          ))}
         </div>
-      ))}
+        {userScroll && (
+          <button class="jump-current" data-testid="jump-current" title="回到当前播放位置并恢复跟随"
+            onClick={() => {
+              setUserScroll(false);
+              activeEl()?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+            }}>
+            ↓ 当前位置
+          </button>
+        )}
+      </div>
     </div>
   );
 }

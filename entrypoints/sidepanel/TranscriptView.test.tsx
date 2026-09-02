@@ -97,3 +97,69 @@ it('折叠选区（仅点击无划选）不触发 onSelect', () => {
   vi.unstubAllGlobals();
   unmount();
 });
+
+describe('滚动跟随（2026-09 用户需求：滚动不被心跳抢占）', () => {
+  const withScrollSpy = () => {
+    const calls: any[] = [];
+    Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
+    return calls;
+  };
+
+  it('用户滚动后播放心跳不再抢滚动；点「当前位置」恢复跟随', async () => {
+    const calls = withScrollSpy();
+    const { rerender, getByTestId, findByTestId } = render(
+      <TranscriptView cues={cues} videoId="v" currentTime={1} mode="en" onSeek={() => {}} onSelect={() => {}} />,
+    );
+    expect(calls.length).toBeGreaterThan(0);        // 跟随生效中
+    calls.length = 0;
+    fireEvent.wheel(getByTestId('cue-0'));          // 用户滚动 → 暂停跟随
+    rerender(<TranscriptView cues={cues} videoId="v" currentTime={1.5} mode="en" onSeek={() => {}} onSelect={() => {}} />);
+    await findByTestId('jump-current');             // 暂停中显示恢复按钮
+    expect(calls.length).toBe(0);                   // 心跳不再触发滚动
+    fireEvent.click(getByTestId('jump-current'));   // 点按钮：跳回当前句 + 恢复
+    calls.length = 0;                               // 清按钮自身的跳转与 userScroll 变化引发的滚动
+    rerender(<TranscriptView cues={cues} videoId="v" currentTime={1.9} mode="en" onSeek={() => {}} onSelect={() => {}} />);
+    expect(calls.length).toBeGreaterThanOrEqual(1); // 恢复跟随：心跳重新驱动滚动
+  });
+});
+
+describe('全文搜索（2026-09 用户需求：中英都搜+蓝底高亮+不动视频）', () => {
+  it('输入即时搜索：计数、mark 高亮、命中行标记', async () => {
+    const { getByTestId, findByTestId } = render(
+      <TranscriptView cues={cues} videoId="v" currentTime={0} mode="bilingual" onSeek={() => {}} onSelect={() => {}} />,
+    );
+    fireEvent.input(getByTestId('search-input'), { target: { value: 'hello' } });
+    const count = await findByTestId('match-count');
+    expect(count.textContent).toBe('1/1');
+    expect(document.querySelector('.transcript mark')!.textContent).toBe('hello');   // 蓝底高亮
+    expect(getByTestId('cue-0').className).toContain('hit');
+    fireEvent.input(getByTestId('search-input'), { target: { value: '世界' } });      // 中文命中
+    expect(getByTestId('match-count').textContent).toBe('1/1');
+    expect(getByTestId('cue-1').className).toContain('hit');
+    fireEvent.input(getByTestId('search-input'), { target: { value: 'zzz' } });      // 无匹配
+    expect(getByTestId('match-count').textContent).toBe('0/0');
+    expect(getByTestId('match-next').disabled).toBe(true);
+  });
+
+  it('多匹配循环跳转（Enter），跳转不动视频', () => {
+    const orig = Element.prototype.scrollIntoView;
+    const spy = vi.fn();
+    Element.prototype.scrollIntoView = function () { spy(); };
+    const many = [
+      { start: 0, dur: 1, text: ' closures capture closures', zh: '' },
+      { start: 1, dur: 1, text: ' state', zh: '' },
+      { start: 2, dur: 1, text: ' closures again', zh: '' },
+    ];
+    const onSeek = vi.fn();
+    const { getByTestId } = render(<TranscriptView cues={many} videoId="v" currentTime={0} mode="en" onSeek={onSeek} onSelect={() => {}} />);
+    fireEvent.input(getByTestId('search-input'), { target: { value: 'closures' } });
+    expect(getByTestId('match-count').textContent).toBe('1/2');
+    fireEvent.keyDown(getByTestId('search-input'), { key: 'Enter' });
+    expect(getByTestId('match-count').textContent).toBe('2/2');
+    fireEvent.keyDown(getByTestId('search-input'), { key: 'Enter' });
+    expect(getByTestId('match-count').textContent).toBe('1/2');      // 循环
+    expect(spy).toHaveBeenCalled();          // 跳转滚动了逐字稿
+    expect(onSeek).not.toHaveBeenCalled();  // 不动视频
+    Element.prototype.scrollIntoView = orig;
+  });
+});

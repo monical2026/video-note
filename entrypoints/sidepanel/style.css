@@ -30,6 +30,18 @@ main { flex: 1; overflow-y: auto; padding: 8px 12px; }
 /* 抓取中空态 */
 .empty.fetching { color: #6e7781; }
 
+/* ===== 全文搜索栏与滚动跟随（2026-09 用户需求） ===== */
+.search-bar { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-bottom: 1px solid #e1e4e8; }
+.search-bar input { flex: 1; height: 26px; padding: 0 8px; border: 1px solid #d0d7de; border-radius: 13px; font-size: 12px; background: #fff; }
+.search-bar .match-count { font-size: 11px; color: #57606a; white-space: nowrap; }
+.search-bar button { border: 1px solid #d0d7de; background: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; cursor: pointer; }
+.search-bar button:disabled { opacity: 0.4; cursor: default; }
+.transcript-wrap { position: relative; }
+.transcript-wrap .jump-current { position: absolute; right: 14px; bottom: 14px; border: 1px solid #0969da; background: #0969da; color: #fff; border-radius: 15px; padding: 5px 12px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(9, 105, 218, 0.35); }
+/* 搜索命中高亮：蓝底白字（用户定案） */
+.transcript mark { background: #0969da; color: #fff; border-radius: 2px; padding: 0 1px; }
+.cue.hit { border-left: 3px solid #0969da; padding-left: 4px; }
+
 /* ===== 设置页：分组卡片布局 ===== */
 .settings { display: flex; flex-direction: column; }
 .settings-card { background: #f6f8fa; border-radius: 8px; padding: 14px; margin-bottom: 12px; border-left: 3px solid #0969da; display: flex; flex-direction: column; gap: 10px; }
