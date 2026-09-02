@@ -159,6 +159,13 @@ describe('router', () => {
     await expect(handleMessage({ type: 'RESEGMENT', videoId: 'v', mode: 'ai' }, dNoLlm)).rejects.toThrow('配置 LLM');
   });
 
+  it('CLEAR_ALL_DATA：清空四个数据 store（视频/逐字稿/笔记/摘要）', async () => {
+    const d = deps({ clearAllVideoData: vi.fn(async () => 4) });
+    const r = await handleMessage({ type: 'CLEAR_ALL_DATA' }, d);
+    expect(d.clearAllVideoData).toHaveBeenCalled();
+    expect(r).toEqual({ ok: true });
+  });
+
   it('DELETE_TRANSCRIPT：清除该视频库存稿（旧润色版/译文/术语表随记录删除）', async () => {
     const d = deps();
     await handleMessage({ type: 'DELETE_TRANSCRIPT', videoId: 'v' }, d);

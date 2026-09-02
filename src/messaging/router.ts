@@ -28,6 +28,7 @@ export interface RouterDeps {
   getSummary(videoId: string): Promise<Summary | undefined>;
   saveSummary(s: Summary): Promise<unknown>;
   deleteTranscript(videoId: string): Promise<unknown>;
+  clearAllVideoData(): Promise<number>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<void>;
   getTranscriptWithFallback(input: any): Promise<{ cues: Cue[]; source: string }>;
@@ -144,6 +145,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     case 'PLAYBACK': return { ok: true };
     case 'OPEN_NOTE_EDITOR': return { ok: true };
     case 'DELETE_TRANSCRIPT': await deps.deleteTranscript(msg.videoId); return { ok: true };
+    case 'CLEAR_ALL_DATA': await deps.clearAllVideoData(); return { ok: true };
     case 'RESEGMENT': {
       const record = await deps.getTranscriptRecord(msg.videoId);
       const raw = record?.raw;

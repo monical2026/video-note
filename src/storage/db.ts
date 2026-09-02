@@ -47,6 +47,14 @@ export const getTranscript = (videoId: string) =>
 export const getTranscriptRecord = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v));
 export const deleteTranscript = (videoId: string) => db().then((d) => d.delete('transcripts', videoId));
+
+/** 清空全部视频数据（videos/transcripts/notes/summaries 四 store）——设置存于 chrome.storage 不受影响 */
+export async function clearAllVideoData(): Promise<number> {
+  const d = await db();
+  const stores = ['videos', 'transcripts', 'notes', 'summaries'] as const;
+  await Promise.all(stores.map((s) => d.clear(s)));
+  return stores.length;
+}
 /** 原始读写（仅测试用）：绕过归一化层，写入/读取 store 里的原值 */
 export const putTranscriptRaw = (videoId: string, value: unknown) => db().then((d) => d.put('transcripts', value, videoId));
 export const openTranscriptRaw = (videoId: string) => db().then((d) => d.get('transcripts', videoId));

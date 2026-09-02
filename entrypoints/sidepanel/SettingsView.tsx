@@ -26,6 +26,22 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
   const [s, setS] = useState<Settings>(props.settings);
   const [testResult, setTestResult] = useState('');
   const [saved, setSaved] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearDone, setClearDone] = useState(false);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 两段式确认：首点进入确认态（3 秒窗口），再点执行——删除不可恢复
+  const clearAll = async () => {
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    if (!confirmClear) {
+      setConfirmClear(true);
+      clearTimer.current = setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+    setConfirmClear(false);
+    await browser.runtime.sendMessage({ type: 'CLEAR_ALL_DATA' }).catch(() => {});
+    setClearDone(true);
+    clearTimer.current = setTimeout(() => setClearDone(false), 3000);
+  };
   const apiKeyRef = useRef<HTMLInputElement>(null);
   // 当前快捷键实际绑定：Chrome 不会自动应用 manifest 更新后的新默认键，需展示真实状态
   const [shortcut, setShortcut] = useState<string | null>(null);
@@ -162,6 +178,13 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
           </span>
         </div>
         <button class="ghost" onClick={() => browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>修改快捷键（浏览器管理页）</button>
+        <div class="field">
+          <span class="label">测试数据</span>
+          <span class="hint-line">删除全部视频、逐字稿、笔记与 AI 摘要（设置与 API key 保留）——用于从头开始完整测试。</span>
+          <button class="ghost danger" data-testid="clear-data-btn" onClick={clearAll}>
+            {confirmClear ? '⚠️ 再点一次确认清空（3 秒内）' : clearDone ? '已清空 ✓' : '清空全部测试数据'}
+          </button>
+        </div>
         <p class="hint-line">密钥仅存储于本机浏览器（chrome.storage.local），请求直达对应服务，不经过第三方。走 Supadata 时视频 URL 会发送至其服务器。</p>
       </section>
 
