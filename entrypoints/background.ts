@@ -39,6 +39,20 @@ export default defineBackground(() => {
     return true; // 异步响应
   });
 
+  // 扩展重载/更新后，已打开页面里的旧 content script 已失联（context invalidated，Chrome 机制）——
+  // 主动给所有 YouTube 标签页重注入脚本：跳转/心跳/跟随立刻恢复，无需用户手动刷新页面。
+  // WXT 的 content script 自带"新实例停旧实例"机制，重复注入安全。
+  browser.runtime.onInstalled.addListener(async () => {
+    try {
+      const tabs = await browser.tabs.query({ url: 'https://www.youtube.com/*' });
+      for (const t of tabs) {
+        if (t.id == null) continue;
+        browser.scripting.executeScript({ target: { tabId: t.id }, files: ['/content-scripts/content.js'] }).catch(() => {});
+      }
+      console.info('[video-note] reinjected content scripts into', tabs.length, 'youtube tabs');
+    } catch { /* scripting 不可用（老浏览器）：刷新页面仍会注入，功能可恢复 */ }
+  });
+
   // 快捷键：抓取当前片段 → 打开笔记编辑器
   browser.commands?.onCommand.addListener(async (command: string) => {
     if (command !== 'capture-note') return;

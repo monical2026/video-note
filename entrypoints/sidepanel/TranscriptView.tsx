@@ -37,18 +37,23 @@ export function TranscriptView(props: {
     setAway((prev) => (prev === v ? prev : v));   // 值不变跳过渲染（滚动事件高频）
   };
 
-  // 播放心跳跟随：用户滚动时跳过，且滚回当前句附近自动恢复跟随
+  // 播放心跳跟随（方案 A，用户 2026-09 定案）：恢复跟随的唯一途径是点「回到当前位置」按钮——
+  // 不做"滑回视口自动恢复"（0.5.1 的自动恢复与"跟随保证当前句可见"互相成全成陷阱，滑不动）。
+  // 跟随对齐 block:'center'——当前句显示在窗口中间（用户定案，不贴底）。
   useEffect(() => {
     const el = activeEl();
     if (!el || typeof el.scrollIntoView !== 'function') return;
-    if (userScroll) {
-      if (activeVisible()) setUserScroll(false);   // 自动恢复
-      else refreshAway();
-      return;
-    }
-    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (userScroll) { refreshAway(); return; }   // 暂停跟随：仅刷新按钮显隐，不滚不恢复
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     refreshAway();
   }, [props.currentTime, userScroll]);
+
+  // 播放时间大幅跳变（>30s：刷新视频/换片）→ 自动回到跟随模式（用户需求：刷新后逐字稿跟随当前播放位置）
+  const prevTime = useRef(props.currentTime);
+  useEffect(() => {
+    if (Math.abs(props.currentTime - prevTime.current) > 30) setUserScroll(false);
+    prevTime.current = props.currentTime;
+  }, [props.currentTime]);
 
   // 全文搜索：中英都搜、不区分大小写（2026-09 用户需求；跳转只定位逐字稿不动视频）
   const ql = q.trim().toLowerCase();

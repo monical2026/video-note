@@ -198,7 +198,7 @@ describe('全文搜索（2026-09 用户需求：中英都搜+蓝底高亮+不动
     expect(getByTestId('cue-1').className).toContain('hit');
     fireEvent.input(getByTestId('search-input'), { target: { value: 'zzz' } });      // 无匹配
     expect(getByTestId('match-count').textContent).toBe('0/0');
-    expect(getByTestId('match-next').disabled).toBe(true);
+    expect((getByTestId('match-next') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('多匹配循环跳转（Enter），跳转不动视频', () => {
@@ -221,5 +221,50 @@ describe('全文搜索（2026-09 用户需求：中英都搜+蓝底高亮+不动
     expect(spy).toHaveBeenCalled();          // 跳转滚动了逐字稿
     expect(onSeek).not.toHaveBeenCalled();  // 不动视频
     Element.prototype.scrollIntoView = orig;
+  });
+});
+
+describe('方案 A 与跳变重置（0.5.2 用户定案）', () => {
+  const mockViewport = (placeAt: () => boolean) => {
+    const orig = Element.prototype.getBoundingClientRect;
+    (Element.prototype as any).getBoundingClientRect = function (this: HTMLElement) {
+      if (this.tagName === 'MAIN') return { top: 0, bottom: 600, left: 0, right: 400, height: 600, width: 400 };
+      if (this.classList?.contains?.('cue') && this.classList.contains('active')) {
+        return placeAt() ? { top: 800, bottom: 850, left: 0, right: 400, height: 50, width: 400 }
+                        : { top: 100, bottom: 150, left: 0, right: 400, height: 50, width: 400 };
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 };
+    };
+    return () => { (Element.prototype as any).getBoundingClientRect = orig; };
+  };
+
+  it('方案 A：滑回视口内也不自动恢复跟随（0.5.1 自动恢复陷阱回归——恢复只靠点按钮）', async () => {
+    let farAway = true;
+    const restore = mockViewport(() => farAway);
+    const calls: any[] = [];
+    Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
+    const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
+    const { rerender, getByTestId } = render(view(1));
+    fireEvent.wheel(getByTestId('cue-0'));       // 滑走：暂停跟随
+    calls.length = 0;
+    farAway = false;                              // 用户自己滑回当前句附近（当前句进视口）
+    rerender(view(1.5));                          // 心跳
+    expect(calls.length).toBe(0);                 // 不自动恢复——不滚动（0.5.1 陷阱回归：此前 activeVisible=true 会恢复+拉回）
+    restore();
+  });
+
+  it('播放时间大幅跳变（刷新/换片）自动回到跟随模式', () => {
+    const restore = mockViewport(() => false);
+    const calls: any[] = [];
+    Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
+    const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
+    const { rerender, getByTestId } = render(view(100));
+    fireEvent.wheel(getByTestId('cue-0'));       // 暂停跟随
+    calls.length = 0;
+    rerender(view(100.5));                        // 正常心跳推进：跟随保持暂停
+    expect(calls.length).toBe(0);
+    rerender(view(2));                            // 刷新/换片：时间从 100 跳回 2（>30s 跳变）
+    expect(calls.length).toBeGreaterThanOrEqual(1);   // 自动恢复跟随
+    restore();
   });
 });

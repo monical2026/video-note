@@ -149,7 +149,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     case 'LIST_LIBRARY': return { rows: await deps.listVideosWithNotes() };
     case 'GET_SETTINGS': return await deps.getSettings();
     case 'SAVE_SETTINGS': await deps.saveSettings(msg.patch); return { ok: true };
-    case 'SEEK': deps.sendToActiveTab(msg); return { ok: true };
+    case 'SEEK': console.info('[video-note] seek', `t=${msg.t}`); deps.sendToActiveTab(msg); return { ok: true };
     case 'CAPTURE_NOW': deps.sendToActiveTab(msg); return { ok: true };
     // content 直发的心跳/编辑器消息到达 background：静默放行，不再落「未知消息」
     case 'PLAYBACK': return { ok: true };
