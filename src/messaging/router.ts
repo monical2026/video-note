@@ -83,11 +83,13 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const [video, cues, notes, summary] = await Promise.all([
         deps.getVideo(msg.videoId), deps.getTranscript(msg.videoId), deps.getNotesByVideo(msg.videoId), deps.getSummary(msg.videoId),
       ]);
+      console.info('[video-note] get', `cues=${cues?.length ?? 0} (videoId=${msg.videoId})`);
       return { video: video ?? null, cues: cues ?? [], notes, summary: summary ?? null } satisfies VideoData;
     }
     case 'TRANSLATE': {
       const record = await deps.getTranscriptRecord(msg.videoId);
       const cues = record?.cues ?? [];
+      console.info('[video-note] translate', `read cues=${cues.length}, raw=${record?.raw?.length ?? 0} (videoId=${msg.videoId})`);
       if (!cues.length) throw new Error('无逐字稿');
       // force：忽略已有译文全量重翻（「LLM 重翻」按钮）；否则只翻缺译文的
       const pending = msg.force ? cues : cues.filter((c) => !c.zh);
@@ -134,6 +136,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const [video, cues, notes, summary] = await Promise.all([
         deps.getVideo(msg.videoId), deps.getTranscript(msg.videoId), deps.getNotesByVideo(msg.videoId), deps.getSummary(msg.videoId),
       ]);
+      console.info('[video-note] export', `cues=${cues?.length ?? 0} (videoId=${msg.videoId})`);
       return { markdown: deps.buildFusedMarkdown({ video, notes: notes as Note[], summary: msg.notesOnly ? undefined : summary, transcript: cues, includeTranscript: msg.includeTranscript }) };
     }
     case 'LIST_LIBRARY': return { rows: await deps.listVideosWithNotes() };
