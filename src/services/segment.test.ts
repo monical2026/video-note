@@ -126,6 +126,60 @@ describe('层 2 组段：软限制（只在句尾换，绝不句中切）', () =
 });
 
 describe('端到端 mergeCues', () => {
+  it('巨段根因回归：json3 常见形态（每条恰一个句号切点）也预切开句——句子建立后组段生效', () => {
+    const cues = [
+      cue(0.0, 2.5, 'Google was a founding team that was'),
+      cue(2.5, 2.4, 'deeply deeply technical. As the'),
+      cue(4.9, 2.3, 'technology the underlying technology got'),
+      cue(7.2, 2.6, 'more mature, the slider goes forward'),
+      cue(9.8, 2.5, 'forward forward more towards the product'),
+      cue(12.3, 2.4, 'thinker product experience. Pinterest'),
+      cue(14.7, 2.6, 'where I was, Snap, Instagram, the CEOs'),
+      cue(17.3, 2.5, "weren't technical at all. They were"),
+      cue(19.8, 2.3, 'product geniuses. So what are the big'),
+      cue(22.1, 2.6, 'consumer wins so far in AI? Of course'),
+      cue(24.7, 2.4, "it's ChatGPT which is in a way not that"),
+      cue(27.1, 1.9, 'dissimilar from Google in terms of what it was'),
+    ];
+    const p = mergeCues(cues);
+    // 修前：1 个巨句 462 字符 1 段（用户实测 00:00 巨段）。修后：多段小段
+    expect(p.length).toBeGreaterThanOrEqual(3);
+    for (const seg of p) expect(seg.text.length).toBeLessThanOrEqual(260);
+    // 文字无损
+    const joined = p.map((x) => x.text).join(' ').replace(/\s+/g, ' ');
+    expect(joined).toContain('Google was a founding team');
+    expect(joined).toContain('what it was');
+  });
+
+  it('满 2 句即换段（用户定案：1~2 句一段）', () => {
+    const s1 = SENT({ text: 'a'.repeat(70), complete: true, start: 0, end: 3 });
+    const s2 = SENT({ text: 'b'.repeat(70), complete: true, start: 3.2, end: 6 });
+    const s3 = SENT({ text: 'c'.repeat(70), complete: true, start: 6.2, end: 9 });
+    const p = sentencesToParagraphs([s1, s2, s3]);
+    expect(p.map((x) => x.text)).toEqual([`${s1.text} ${s2.text}`, s3.text]);
+  });
+
+  it('非语言标记行（[laughter] 等）并入前句不单独成段；首行标记并入后句', () => {
+    const cues = [
+      cue(0, 3, 'Yes, I heard your podcast.'),
+      cue(3.2, 1, '[laughter]'),
+      cue(4.5, 3, 'It was very impressive.'),
+      cue(8, 3, 'I love it.'),
+    ];
+    const p = mergeCues(cues);
+    // [laughter] 并入前句所在段，不单独成段
+    expect(p.some((x) => x.text.trim() === '[laughter]' || x.text.trim() === 'laughter')).toBe(false);
+    const withLaughter = p.find((x) => x.text.includes('[laughter]'));
+    expect(withLaughter).toBeTruthy();
+    expect(withLaughter!.text).toContain('podcast. [laughter]');
+
+    // 首行标记：并到后一句
+    const p2 = mergeCues([cue(0, 2, '[music]'), cue(2.1, 3, 'Welcome to the show.')]);
+    expect(p2.some((x) => x.text.trim() === '[music]')).toBe(false);
+    expect(p2.length).toBe(1);
+    expect(p2[0]!.text).toContain('[music]');
+  });
+
   it('Whisper 长条形态（单条 content 内挤多句）：条内预切后产出小段，时间分摊且文字无损', () => {
     // 根因复现（2026-08-28 用户实测）：Supadata 单条 content 是一大段话——
     // 不预切时整条成为"一个句子"，组段层"长句不硬切"→ 一大段一大段

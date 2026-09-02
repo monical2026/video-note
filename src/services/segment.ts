@@ -42,20 +42,23 @@ export interface Sentence {
 /**
  * 条内预切：Whisper 等转写服务的单条 content 可能内含多个句子（一条挤几句话），
  * 决策表只在条间判断、从不拆条内 → 整条巨块被当成"一个句子"进组段 → 一大段一大段。
- * 这里先把含多个句号的条按句号切开，时间按字符比例线性分摊（近似）；
+ * 这里先把条内句号切开，时间按字符比例线性分摊（近似）；
  * 假句号误切（e.g.）会被层 1 的 KEEP 规则拼回（切开的小片时间连续、gap≈0）。
+ * 根因修正（2026-09-02）：YouTube json3 最常见形态是"每条恰一个句号切点"
+ * （如 "deeply deeply technical. As the"）——此前在补尾前判 parts.length<=1 直接跳过，
+ * 导致句子从未建立、组段规则全程空转 → 巨段。现在补尾后再判：只要切得出一句话+剩余就切。
  */
 function preSplit(cues: Cue[]): Cue[] {
   const out: Cue[] = [];
   for (const c of cues) {
     const text = c.text.trim();
-    // 切点要求句尾符后跟空白或结尾（前瞻不消耗）：排除 3.14 / v1.2 这类点后无空格的小数/版本号；
-    // 缩写假句号（Dr.）可能被切开，由层 1 的 KEEP 规则拼回（切开小片时间连续 gap≈0）
+    // 切点要求句尾符后跟空白或结尾（前瞻不消耗）：排除 3.14 / v1.2 这类点后无空格的小数/版本号
     const parts = text.match(/[^.!?]+[.!?]+["')”’]?(?=\s|$)/g);
-    if (!parts || parts.length <= 1) { out.push(c); continue; }
-    // 尾部可能无句号（如 "Dr. Smith explains" 的 "Smith explains"）——match 不含它，必须补上防丢字
+    if (!parts) { out.push(c); continue; }
+    // 尾部可能无句号（如 "technical. As the" 的 "As the"）——match 不含它，必须补上防丢字
     const consumed = parts.reduce((n, p) => n + p.length, 0);
     if (consumed < text.length) parts.push(text.slice(consumed));
+    if (parts.length <= 1) { out.push(c); continue; }   // 整条就是一句：原样
     const totalChars = parts.reduce((n, p) => n + p.length, 0);
     let acc = 0;
     for (const p of parts) {
@@ -67,6 +70,35 @@ function preSplit(cues: Cue[]): Cue[] {
   return out;
 }
 
+/** 纯非语言标记行：[laughter] / [music] / [clears throat] / [snorts] 等（含方括号变体） */
+const NONVERBAL = /^\[+[^\][]{0,40}\]+$/;
+
+/**
+ * 非语言标记并段（2026-09-02 用户定案）：纯标记行不单独成段——笑声/音乐属于刚才内容的反应，
+ * 并入前一条尾部；开头的标记（无前行）并入后一条头部。
+ */
+function mergeNonverbal(cues: Cue[]): Cue[] {
+  const out: Cue[] = [];
+  for (const c of cues) {
+    const t = c.text.trim();
+    if (NONVERBAL.test(t) && out.length) {
+      const prev = out[out.length - 1]!;
+      out[out.length - 1] = { ...prev, text: `${prev.text} ${t}` };
+    } else {
+      out.push(c);
+    }
+  }
+  // 前导标记并入第一个非标记行
+  const lead: string[] = [];
+  while (out.length > 1 && NONVERBAL.test(out[0]!.text.trim())) {
+    lead.push(out.shift()!.text.trim());
+  }
+  if (lead.length && out.length) {
+    out[0] = { ...out[0]!, text: `${lead.join(' ')} ${out[0]!.text}` };
+  }
+  return out;
+}
+
 /**
  * 层 1：碎行 → 句子。对每对相邻碎行按优先级决策 KEEP/CUT：
  *  1 >> 切换 → CUT；2 真句尾 → CUT；3 弱边界/续接词结尾/未闭合 → KEEP；
@@ -74,7 +106,7 @@ function preSplit(cues: Cue[]): Cue[] {
  *  6 gap≥1.5s → 候选断句三条件；7 默认 KEEP（保守）
  */
 export function sentencesFromCues(rawCues: Cue[]): Sentence[] {
-  const cues = preSplit(rawCues);   // 条内预切：句子边界回到条间维度
+  const cues = mergeNonverbal(preSplit(rawCues));   // 条内预切开句 → 非语言标记并段 → 决策表
   const out: Sentence[] = [];
   let buf: { start: number; end: number; text: string; speakerStart: boolean }[] = [];
   const flush = () => {
@@ -125,8 +157,7 @@ export function sentencesFromCues(rawCues: Cue[]): Sentence[] {
 
 // ===== 层 2 组段（软限制）=====
 const MIN_CHARS = 60;        // 段落下限：不够就并入下一句
-const TARGET_CHARS = 120;    // 与 2 句搭配的理想起点
-const MAX_SENTS = 3;         // 最多 3 个完整句
+const MAX_SENTS = 2;         // 满 2 句即换（2026-09-02 用户定案：按 1~2 句一段）
 const HARD_CHARS = 220;      // 到此必换（仍在句尾）
 const MAX_SPAN_S = 18;       // 时长到此必换（仍在句尾）
 const GAP_BREAK = 2.8;       // 句后长停顿 → 换段
@@ -137,10 +168,9 @@ const SOFT_SPAN_S = 20;
 function shouldBreakParagraph(segChars: number, segSpan: number, completeCount: number, s: Sentence): boolean {
   if (segChars < MIN_CHARS) return false;                       // 段太小：继续并
   if ((s.nextGap ?? Infinity) >= GAP_BREAK) return true;        // 句后长停顿
-  if (completeCount >= MAX_SENTS) return true;                  // 满 3 句
+  if (completeCount >= MAX_SENTS) return true;                  // 满 2 句即换
   if (segChars >= HARD_CHARS) return true;                      // 字符上限（句尾）
   if (segSpan >= MAX_SPAN_S) return true;                       // 时长上限（句尾）
-  if (completeCount >= 2 && (segChars >= TARGET_CHARS || segSpan >= 10)) return true;
   if ((segChars > SOFT_CHARS || segSpan > SOFT_SPAN_S) && s.complete) return true; // 软上限：下个句尾换
   return false;
 }
