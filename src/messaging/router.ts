@@ -153,6 +153,8 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     case 'CAPTURE_NOW': deps.sendToActiveTab(msg); return { ok: true };
     // content 直发的心跳/编辑器消息到达 background：静默放行，不再落「未知消息」
     case 'PLAYBACK': return { ok: true };
+    // SPA 导航瞬间通知：转发面板立即切换（字幕抓取前先亮标题+加载态；已抓过的视频库读秒切）
+    case 'VIDEO_CHANGED': deps.broadcast(msg); return { ok: true };
     case 'OPEN_NOTE_EDITOR': return { ok: true };
     case 'DELETE_TRANSCRIPT': await deps.deleteTranscript(msg.videoId); return { ok: true };
     case 'CLEAR_ALL_DATA': await deps.clearAllVideoData(); return { ok: true };

@@ -39,6 +39,20 @@ export function App() {
     } finally { setTranslating(false); setStream(null); }
   };
 
+  /**
+   * 视频切换统一入口（2026-09 用户需求）：切换瞬间立即亮新标题进「正在获取字幕…」态，
+   * 再库读——已抓取过的视频秒显库存数据（不重抓）；未抓取的等 PAGE_INFO（SPA 链）或主动触发抓取（标签页链）。
+   */
+  const handleVideoSwitch = async (meta: { videoId: string; title: string; channel: string }, autoFetch = false) => {
+    if (meta.title) {
+      // 先亮新标题（SPA 链带 title；标签页链 title 空，loadVideoData 会带出库里的完整信息）
+      videoInfo.value = { ...meta, url: `https://www.youtube.com/watch?v=${meta.videoId}`, captionLang: 'en', fetchedAt: Date.now() };
+    }
+    cues.value = [];                      // 进加载态（已抓/未抓都先显示获取中，库读命中立即替换）
+    await loadVideoData(meta.videoId);
+    if (autoFetch && !cues.value.length) sendMsg({ type: 'RETRY_TRANSCRIPT' });   // 未抓取：active tab 自动抓
+  };
+
   useEffect(() => {
     refreshSettings();
     // 记住上次的 Tab：面板关闭重开后回到原处（而非默认「逐字稿」）
@@ -57,13 +71,30 @@ export function App() {
       if (msg.type === 'OPEN_NOTE_EDITOR') noteEditorCtx.value = msg;
       if (msg.type === 'TRANSCRIPT_FAILED') transcriptError.value = msg.reason;
       if (msg.type === 'LLM_STREAM') setStream(msg as StreamInfo);
+      // SPA 导航瞬间通知（content 经 background 转发）：立即切换——亮新标题+加载态，已抓过的库读秒切
+      if (msg.type === 'VIDEO_CHANGED' && !sender?.tab) {
+        transcriptError.value = ''; setStream(null);
+        if (msg.meta.videoId !== videoInfo.value?.videoId) handleVideoSwitch(msg.meta);
+      }
       // 仅接受 background 处理完成后的广播（sender 无 tab）；忽略 content script 发来的原始未处理消息
       if (msg.type === 'PAGE_INFO' && !sender?.tab) {
         transcriptError.value = ''; setStream(null); loadVideoData(msg.meta.videoId);
       }
     };
     browser.runtime.onMessage.addListener(listener);
-    return () => browser.runtime.onMessage.removeListener(listener);
+    // 多标签页切换跟随：激活的标签页是另一个 YouTube 视频时立即切换（已抓取秒显；未抓取自动触发抓取）
+    const onTabActivated = ({ tabId }: any) => {
+      browser.tabs.get(tabId).then((tab: any) => {
+        const m = (tab?.url ?? '').match(/[?&]v=([\w-]{11})/);
+        if (!m || m[1] === videoInfo.value?.videoId) return;
+        handleVideoSwitch({ videoId: m[1]!, title: '', channel: '' }, true);
+      }).catch(() => {});
+    };
+    browser.tabs.onActivated?.addListener?.(onTabActivated);
+    return () => {
+      browser.runtime.onMessage.removeListener(listener);
+      browser.tabs.onActivated?.removeListener?.(onTabActivated);
+    };
   }, []);
 
   // Tab 切换持久化：恢复完成前不回写——否则挂载瞬间 subscribe 的立即回调（值为默认 transcript）

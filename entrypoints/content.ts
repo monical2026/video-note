@@ -106,6 +106,8 @@ export default defineContentScript({
         const meta = extractVideoMeta(html, location.href);
         if (!meta.videoId || meta.videoId === lastVideoId) return;
         lastVideoId = meta.videoId;
+        // 导航瞬间先通知面板切换（亮新标题+加载态；已抓过的视频库读秒切）——不等字幕抓取的几秒~十几秒
+        safeSend({ type: 'VIDEO_CHANGED', meta });
         const cues = await obtainCues(html, meta.videoId);
         safeSend({ type: 'PAGE_INFO', meta, cues });
       } catch { /* 页面未就绪，导航事件后重试 */ ctx.setTimeout(onPageChange, 1500); }

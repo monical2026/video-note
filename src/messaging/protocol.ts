@@ -19,6 +19,7 @@ export type Msg =
   | { type: 'CAPTURE_NOW' }
   | { type: 'LIST_LIBRARY' }
   | { type: 'OPEN_NOTE_EDITOR'; start: number; end: number; excerpt: string }
+  | { type: 'VIDEO_CHANGED'; meta: { videoId: string; title: string; channel: string } }  // content script SPA 导航瞬间发（字幕抓取前）——面板立即切换显示，不干等
   | { type: 'TRANSCRIPT_FAILED'; videoId: string; reason: string }
   | { type: 'LLM_STREAM'; batch: number; batchTotal: number; text: string }  // bg→面板：LLM 翻译流式生成进度（节流后）
   | { type: 'RETRY_TRANSCRIPT' };

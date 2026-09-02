@@ -68,6 +68,14 @@ describe('router', () => {
     expect(d.sendToActiveTab).toHaveBeenCalledWith({ type: 'RETRY_TRANSCRIPT' });
   });
 
+  it('VIDEO_CHANGED：静默转发广播给面板（SPA 导航瞬间切换）', async () => {
+    const d = deps();
+    const msg = { type: 'VIDEO_CHANGED' as const, meta: { videoId: 'v2', title: 'T2', channel: 'C2' } };
+    const r = await handleMessage(msg, d);
+    expect(d.broadcast).toHaveBeenCalledWith(msg);
+    expect(r).toEqual({ ok: true });
+  });
+
   it('PLAYBACK / OPEN_NOTE_EDITOR 静默放行不抛错', async () => {
     await expect(handleMessage({ type: 'PLAYBACK', t: 1 }, deps())).resolves.toEqual({ ok: true });
     await expect(handleMessage({ type: 'OPEN_NOTE_EDITOR', start: 0, end: 1, excerpt: '' }, deps())).resolves.toEqual({ ok: true });
