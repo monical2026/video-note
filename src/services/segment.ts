@@ -70,8 +70,8 @@ function preSplit(cues: Cue[]): Cue[] {
   return out;
 }
 
-/** 纯非语言标记行：[laughter] / [music] / [clears throat] / [snorts] 等（含方括号变体） */
-const NONVERBAL = /^\[+[^\][]{0,40}\]+$/;
+/** 纯非语言标记行：[laughter] / [music] / [clears throat] 等；允许一行多个标记（[cheering] [applause]） */
+const NONVERBAL = /^(?:\[+[^\][]{0,40}\]+\s*)+$/;
 
 /**
  * 非语言标记并段（2026-09-02 用户定案）：纯标记行不单独成段——笑声/音乐属于刚才内容的反应，

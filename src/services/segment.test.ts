@@ -178,6 +178,11 @@ describe('端到端 mergeCues', () => {
     expect(p2.some((x) => x.text.trim() === '[music]')).toBe(false);
     expect(p2.length).toBe(1);
     expect(p2[0]!.text).toContain('[music]');
+
+    // 复合标记行（一行多个标记）同样并入前句，不单独成段
+    const p3 = mergeCues([cue(0, 3, 'Welcome to the stage.'), cue(3.2, 1, '[cheering] [applause]'), cue(4.6, 3, 'Thank you all.')]);
+    expect(p3.some((x) => x.text.trim() === '[cheering] [applause]')).toBe(false);
+    expect(p3.find((x) => x.text.includes('[applause]'))!.text).toContain('stage. [cheering] [applause]');
   });
 
   it('Whisper 长条形态（单条 content 内挤多句）：条内预切后产出小段，时间分摊且文字无损', () => {
