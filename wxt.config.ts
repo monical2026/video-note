@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: 'Video Note',
     // 版本号随功能性修复递增（0.4.0 起）——用户在 chrome://extensions 卡片可核对"新代码是否真的加载了"
-    version: '0.4.3',
+    version: '0.4.2',
     description: '看视频做笔记：逐字稿、中英对照、AI 摘要、融合导出',
     permissions: ['sidePanel', 'storage', 'commands', 'tabs'],
     host_permissions: ['https://www.youtube.com/*', 'https://api.supadata.ai/*', 'https://translate.googleapis.com/*'],

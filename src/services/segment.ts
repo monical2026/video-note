@@ -23,7 +23,12 @@ const OPEN_BRACKET = /["'“‘(][^)"'”’]*$/;
 const CONT_TAIL = /\b(?:and|but|or|nor|so|yet|because|that|which|who|whom|whose|if|when|while|since|though|although|unless|until|whereas|to|of|with|for|from|into|onto|on|in|at|by|up|down|off|out|over|under|than|as)\s*$/i;
 /** 下一条以续接词开头（且前一条无句号）→ 同一句 */
 const CONT_HEAD = /^\s*(?:and|but|or|nor|so|yet|because|which|who|if|when|while|to|of|with|for)\b/i;
+/** 新句开头启发：大写/引号后大写，或代词与话语标记 */
+const STARTER = /^(?:["'“‘]?[A-Z]|\b(?:I|We|You|He|She|They|It|This|That|These|Those|There|Here|What|When|Where|Why|How|Let|OK|Okay|Well|Now|First|Next|So)\b)/;
+
 const stripSpeaker = (t: string) => t.replace(/^>>\s*/, '');
+const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+const nonSpace = (t: string) => t.replace(/\s+/g, '').length;
 /** 真句尾：强边界且非假句号 */
 const isTrueStop = (t: string) => STRONG.test(t) && !FALSE_STOP.test(t) && !DECIMAL_DOT.test(t);
 
@@ -97,8 +102,8 @@ function mergeNonverbal(cues: Cue[]): Cue[] {
 /**
  * 层 1：碎行 → 句子。对每对相邻碎行按优先级决策 KEEP/CUT：
  *  1 >> 切换 → CUT；2 真句尾 → CUT；3 弱边界/续接词结尾/未闭合 → KEEP；
- *  4 下一条续接词开头（前无句号）→ KEEP；5 其余一律 KEEP（保守）
- *  注：停顿候选断句（gap≥1.5s+新句开头三条件）已于 2026-09-02 按用户定案移除
+ *  4 下一条续接词开头（前无句号）→ KEEP；5 gap<0.7s → KEEP；
+ *  6 gap≥1.5s → 候选断句三条件；7 默认 KEEP（保守）
  */
 export function sentencesFromCues(rawCues: Cue[]): Sentence[] {
   const cues = mergeNonverbal(preSplit(rawCues));   // 条内预切开句 → 非语言标记并段 → 决策表
@@ -132,8 +137,13 @@ export function sentencesFromCues(rawCues: Cue[]): Sentence[] {
       else if (isTrueStop(curTail)) cut = true;                        // 2 真句尾
       else if (WEAK.test(curTail) || OPEN_BRACKET.test(c.text) || CONT_TAIL.test(curTail)) cut = false; // 3
       else if (CONT_HEAD.test(next.text)) cut = false;                 // 4
-      else cut = false;                                                // 停顿断句已移除（2026-09-02 用户定案）：
-                                                                       // 此前 gap≥1.5s+新句开头三条件会断句；现在无标点数据一律继续拼，由层 2 软上限兜底
+      else if (gap < 0.7) cut = false;                                 // 5
+      else if (gap >= 1.5) {                                           // 6 候选断句三条件
+        const acc = buf.map((b) => b.text).join(' ');
+        const endsClean = !WEAK.test(curTail) && !CONT_TAIL.test(curTail);
+        const startsNew = STARTER.test(next.text.trim());
+        cut = (words(acc) >= 8 || nonSpace(acc) >= 40) && endsClean && startsNew;
+      } else cut = false;                                              // 7 保守默认
     }
     if (cut) flush();
   }

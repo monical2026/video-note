@@ -32,18 +32,28 @@ describe('层 1 分句：CUT/KEEP 决策表', () => {
     expect(sentencesFromCues([cue(0, 2, 'so closures'), cue(2.05, 2, 'capture state')])).toHaveLength(1);
   });
 
-  it('停顿断句已移除（2026-09-02 用户定案）：无标点数据即使长停顿+大写开头也 KEEP', () => {
-    // 此前 gap≥1.5s+新句开头三条件会 CUT；移除后一律继续拼，由层 2 软上限兜底
-    const a = sentencesFromCues([
+  it('候选断句：无标点 + gap≥1.5s + 已 ≥8 词 + 下一条大写开头 → CUT', () => {
+    const s = sentencesFromCues([
       cue(0, 3, 'um so we have this concept called closures here'),
-      cue(5, 2, 'They capture state'),   // gap=2.0，大写开头——仍不切
+      cue(5, 2, 'They capture state'),   // gap=2.0，They 大写开头，前累计 10 词
     ]);
-    expect(a).toHaveLength(1);
-    const b = sentencesFromCues([
+    expect(s).toHaveLength(2);
+  });
+
+  it('候选断句拒绝：gap 1.5s 但下一条小写开头 → KEEP（保守）', () => {
+    const s = sentencesFromCues([
       cue(0, 3, 'um so we have this concept called closures here'),
-      cue(5, 2, 'they capture state'),   // 小写开头——同样不切
+      cue(5, 2, 'they capture state'),   // 小写开头 → 不切
     ]);
-    expect(b).toHaveLength(1);
+    expect(s).toHaveLength(1);
+  });
+
+  it('候选断句拒绝：累计不足 8 词 → KEEP', () => {
+    const s = sentencesFromCues([
+      cue(0, 1, 'so closures'),
+      cue(3, 2, 'They capture state'),   // gap=2.0 但首段仅 2 词
+    ]);
+    expect(s).toHaveLength(1);
   });
 
   it('>> 说话人切换 → CUT，>> 标记剔除并记录 speakerBreak', () => {
@@ -195,8 +205,8 @@ describe('端到端 mergeCues', () => {
     expect(p.at(-1)!.start + p.at(-1)!.dur).toBeLessThanOrEqual(28.01);
   });
 
-  it('Whisper 无标点场景（停顿断句移除后）：无句尾则整段拼合，文字无损（层 2 无句尾可换）', () => {
-    // 8 个无标点碎行，行间 gap 2s——停顿断句已移除，层 1 无信号可切 → 整拼一段
+  it('Whisper 无标点场景：候选断句 + 组段软限制 → 段落 2~3 句量级，文字无损', () => {
+    // 8 个无标点碎行，每两行之间 gap 2s（触发候选断句），下一行大写开头
     const lines = [
       'um so today we are going to talk about closures in javascript',
       'They capture variables from outer scope',
@@ -209,9 +219,10 @@ describe('端到端 mergeCues', () => {
     ];
     const cues = lines.map((t, i) => cue(i * 5, 3, t));   // 3s 内容 + 2s gap
     const p = mergeCues(cues);
-    expect(p).toHaveLength(1);   // 新规则如实行为：无标点无句尾 → 一段（用户 2026-09-02 定案移除停顿断句的已知代价）
+    expect(p.length).toBeGreaterThanOrEqual(2);           // 不再是一大段
+    for (const seg of p) expect(seg.text.length).toBeLessThanOrEqual(400);  // 软上限生效
     // 文字无损：总词数不变
-    expect(p[0]!.text.split(' ').length).toBe(lines.reduce((n, t) => n + t.split(' ').length, 0));
+    expect(p.reduce((n, x) => n + x.text.split(' ').length, 0)).toBe(lines.reduce((n, t) => n + t.split(' ').length, 0));
   });
 
   it('空输入与单行', () => {
