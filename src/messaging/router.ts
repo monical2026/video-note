@@ -111,6 +111,13 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
         out = await deps.runBatchTranslation(pending, deps.googleFreeTranslate, { concurrency: 10 });
       }
       const merged = cues.map((c) => out.translated.find((t) => t.start === c.start) ?? c);
+      // 乐观锁（2026-09-02 根因修复）：免费翻译一跑几分钟，期间用户可能重新分段——
+      // 写回前校验库中段落结构未变，防止旧翻译用启动时的旧段覆盖新分段（实测 167 段被写回 65 段的元凶）
+      const cur = await deps.getTranscriptRecord(msg.videoId);
+      const sig = (arr: { start: number }[]) => arr.map((c) => c.start).join(',');
+      if (!cur || sig(cur.cues) !== sig(cues)) {
+        return { error: '逐字稿已重新分段，本次翻译已取消（分段已生效，请重新点翻译）' };
+      }
       await deps.saveTranscript(msg.videoId, merged, terms, record?.polishedAt, record?.raw);
       return { ok: true, failed: out.failed };
     }
