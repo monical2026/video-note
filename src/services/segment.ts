@@ -78,9 +78,12 @@ const NONVERBAL = /^(?:\[+[^\][]{0,40}\]+\s*)+$/;
  * 并入前一条尾部；开头的标记（无前行）并入后一条头部。
  */
 function mergeNonverbal(cues: Cue[]): Cue[] {
+  // 判定与拼接前先剥 >> 前缀（2026-09-02 raw 取证：YouTube 把"新说话人是音乐标记"写成 ">> [music]"，
+  // 整串匹配会漏掉导致标记独立成段）
+  const bare = (t: string) => t.trim().replace(/^>>\s*/, '');
   const out: Cue[] = [];
   for (const c of cues) {
-    const t = c.text.trim();
+    const t = bare(c.text);
     if (NONVERBAL.test(t) && out.length) {
       const prev = out[out.length - 1]!;
       out[out.length - 1] = { ...prev, text: `${prev.text} ${t}` };
@@ -90,8 +93,8 @@ function mergeNonverbal(cues: Cue[]): Cue[] {
   }
   // 前导标记并入第一个非标记行
   const lead: string[] = [];
-  while (out.length > 1 && NONVERBAL.test(out[0]!.text.trim())) {
-    lead.push(out.shift()!.text.trim());
+  while (out.length > 1 && NONVERBAL.test(bare(out[0]!.text))) {
+    lead.push(bare(out.shift()!.text));
   }
   if (lead.length && out.length) {
     out[0] = { ...out[0]!, text: `${lead.join(' ')} ${out[0]!.text}` };
@@ -164,9 +167,10 @@ const GAP_BREAK = 2.8;       // 句后长停顿 → 换段
 const SOFT_CHARS = 320;      // 软上限：只在下一个句尾换，绝不句中切
 const SOFT_SPAN_S = 20;
 
-/** 是否在此句之后换段（当前段信息 + 本句） */
-function shouldBreakParagraph(segChars: number, segSpan: number, completeCount: number, s: Sentence): boolean {
-  if (segChars < MIN_CHARS) return false;                       // 段太小：继续并
+/** 是否在此句之后换段（当前段信息 + 本句 + 下一句是否换说话人） */
+function shouldBreakParagraph(segChars: number, segSpan: number, completeCount: number, s: Sentence, nextIsSpeaker: boolean): boolean {
+  if (segChars < MIN_CHARS) return false;                       // 段太小：继续并——即使下一句换说话人（2026-09-02 用户裁决：短句并入优先于"不合并说话人"，"Hello." 5 字符不再独立成段）
+  if (nextIsSpeaker) return true;                               // 不同说话人不合并（段已达下限后）
   if ((s.nextGap ?? Infinity) >= GAP_BREAK) return true;        // 句后长停顿
   if (completeCount >= MAX_SENTS) return true;                  // 满 2 句即换
   if (segChars >= HARD_CHARS) return true;                      // 字符上限（句尾）
@@ -198,9 +202,9 @@ export function sentencesToParagraphs(sentences: Sentence[], breakpoints?: numbe
     const segSpan = s.end - buf[0]!.start;
     const completeCount = buf.filter((b) => b.complete).length;
     const byAi = bp.has(idx + 1);
-    // 下一句由 >> 说话人切换开始 → 本段必须在此收尾（绝不合并不同说话人）
+    // 下一句由 >> 说话人切换开始 → 本段在此收尾（经 shouldBreakParagraph：短段豁免，见上）
     const nextSpeaker = !!sentences[idx + 1]?.speakerBreak;
-    if (nextSpeaker || byAi || shouldBreakParagraph(segChars, segSpan, completeCount, s)) flush();
+    if (byAi || shouldBreakParagraph(segChars, segSpan, completeCount, s, nextSpeaker)) flush();
   });
   flush();
   return out;

@@ -65,6 +65,28 @@ describe('层 1 分句：CUT/KEEP 决策表', () => {
     expect(s.map((x) => x.text)).toEqual(['host asks a question?', 'guest answers here']);
     expect(s[1]!.speakerBreak).toBe(true);
   });
+
+  it('真实形态回归（2026-09-02 raw 取证）：">> [music]" 剥 >> 前缀后并入前句，不独立成段', () => {
+    // YouTube 把"新说话人是音乐标记"写成 ">> [music]"——并段判定需先剥 >> 前缀再匹配标记
+    const p = mergeCues([
+      cue(0, 5, 'Welcome to the stage, Grant Sanderson.'),
+      cue(5.5, 3, '>> [music]'),
+      cue(9, 4, '>> Thank you all for coming.'),
+    ]);
+    expect(p.some((x) => /\[music\]/.test(x.text) && x.text.trim().length < 12)).toBe(false);
+    expect(p.find((x) => x.text.includes('[music]'))!.text).toContain('Grant Sanderson. [music]');
+  });
+
+  it('真实形态回归：短句后跟 >> 换人也不独立成段（段太小优先于说话人切换）', () => {
+    // 原料：Hello. 之后是 ">> Hello Config..."——旧逻辑 nextSpeaker 无条件换段致 Hello.(5字符) 独立
+    const p = mergeCues([
+      cue(13.12, 2, 'Hello.'),
+      cue(19.76, 4, '>> Hello Config. Are you ready for day two?'),
+    ]);
+    expect(p).toHaveLength(1);   // Hello. 并入下一段开头
+    expect(p[0]!.text).toContain('Hello.');
+    expect(p[0]!.text).toContain('Hello Config');
+  });
 });
 
 describe('层 2 组段：软限制（只在句尾换，绝不句中切）', () => {
