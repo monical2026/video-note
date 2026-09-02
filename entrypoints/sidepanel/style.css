@@ -37,7 +37,7 @@ main { flex: 1; overflow-y: auto; padding: 8px 12px; }
 .search-bar button { border: 1px solid #d0d7de; background: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; cursor: pointer; }
 .search-bar button:disabled { opacity: 0.4; cursor: default; }
 .transcript-wrap { position: relative; }
-.transcript-wrap .jump-current { position: absolute; right: 14px; bottom: 14px; border: 1px solid #0969da; background: #0969da; color: #fff; border-radius: 15px; padding: 5px 12px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(9, 105, 218, 0.35); }
+.transcript-wrap .jump-current { position: fixed; right: 14px; bottom: 14px; z-index: 10; border: 1px solid #0969da; background: #0969da; color: #fff; border-radius: 15px; padding: 5px 12px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(9, 105, 218, 0.35); }
 /* 搜索命中高亮：蓝底白字（用户定案） */
 .transcript mark { background: #0969da; color: #fff; border-radius: 2px; padding: 0 1px; }
 .cue.hit { border-left: 3px solid #0969da; padding-left: 4px; }

@@ -11,13 +11,30 @@ export function TranscriptView(props: {
   const [userScroll, setUserScroll] = useState(false);
   const [q, setQ] = useState('');
   const [matchIdx, setMatchIdx] = useState(0);
+  const [hovering, setHovering] = useState(false);   // 鼠标悬停在逐字稿区域（按钮显隐条件之一）
+  const [away, setAway] = useState(false);           // 当前播放句不在可视范围（按钮显隐条件之二）
 
   const activeEl = () => containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
+  /**
+   * 当前句是否在可视范围——参照物必须是【滚动容器的可视矩形】（最近的 main 祖先），
+   * 绝不能用逐字稿内容区自身（它包住全部内容，任何句子都"在其中"，判定恒真——
+   * 0.5.0 的根因：恒真导致滚动暂停瞬间被重置，播放/暂停都滚不动）。
+   */
   const activeVisible = () => {
-    const c = containerRef.current, el = activeEl();
-    if (!c || !el || typeof el.getBoundingClientRect !== 'function') return true;   // 无 rect 环境：保守视为可见
-    const cr = c.getBoundingClientRect(), er = el.getBoundingClientRect();
-    return er.bottom > cr.top && er.top < cr.bottom;
+    const el = activeEl();
+    if (!el || typeof el.getBoundingClientRect !== 'function') return true;   // 无 rect 环境：保守视为可见
+    const scroller = containerRef.current?.closest?.('main') as HTMLElement | null;
+    let top = 0, bottom = typeof window !== 'undefined' ? window.innerHeight : Infinity;
+    if (scroller && typeof scroller.getBoundingClientRect === 'function') {
+      const sr = scroller.getBoundingClientRect();
+      top = sr.top; bottom = sr.bottom;
+    }
+    const er = el.getBoundingClientRect();
+    return er.bottom > top && er.top < bottom;
+  };
+  const refreshAway = () => {
+    const v = !activeVisible();
+    setAway((prev) => (prev === v ? prev : v));   // 值不变跳过渲染（滚动事件高频）
   };
 
   // 播放心跳跟随：用户滚动时跳过，且滚回当前句附近自动恢复跟随
@@ -26,9 +43,11 @@ export function TranscriptView(props: {
     if (!el || typeof el.scrollIntoView !== 'function') return;
     if (userScroll) {
       if (activeVisible()) setUserScroll(false);   // 自动恢复
+      else refreshAway();
       return;
     }
     el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    refreshAway();
   }, [props.currentTime, userScroll]);
 
   // 全文搜索：中英都搜、不区分大小写（2026-09 用户需求；跳转只定位逐字稿不动视频）
@@ -93,8 +112,11 @@ export function TranscriptView(props: {
         <button data-testid="match-prev" title="上一个匹配" disabled={!matches.length} onClick={() => jumpToMatch(matchIdx - 1)}>↑</button>
         <button data-testid="match-next" title="下一个匹配（回车同）" disabled={!matches.length} onClick={() => jumpToMatch(matchIdx + 1)}>↓</button>
       </div>
-      <div class="transcript-wrap">
+      <div class="transcript-wrap" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
         <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}
+          onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}
+          onMouseDown={() => { try { window.getSelection()?.removeAllRanges(); } catch { /* 兼容 */ } }}
+          onScroll={refreshAway}
           onWheel={() => setUserScroll(true)} onTouchMove={() => setUserScroll(true)}>
           {props.cues.map((c, i) => (
             <div key={i} data-testid={`cue-${i}`} data-index={i}
@@ -106,13 +128,14 @@ export function TranscriptView(props: {
             </div>
           ))}
         </div>
-        {userScroll && (
+        {hovering && away && (
           <button class="jump-current" data-testid="jump-current" title="回到当前播放位置并恢复跟随"
             onClick={() => {
               setUserScroll(false);
               activeEl()?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+              setAway(false);
             }}>
-            ↓ 当前位置
+            ↓ 回到当前位置
           </button>
         )}
       </div>
