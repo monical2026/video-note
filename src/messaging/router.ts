@@ -166,6 +166,9 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       }
       // 文字一字不动：术语表仍适用故保留；新段与旧译文失配 → 落库即清空待重翻；raw 保留
       await deps.saveTranscript(msg.videoId, final, record?.terms, record?.polishedAt, raw);
+      // 写后回读验证（2026-09-02 排障）：区分"写入失败"（回读旧值/空）与"读取端问题"（回读新值但界面/导出仍旧）
+      const verify = await deps.getTranscriptRecord(msg.videoId);
+      console.info('[video-note] segment', `saved ${final.length}, reread ${verify?.cues?.length ?? 'undefined'} (videoId=${msg.videoId})`);
       return { ok: true, cueCount: final.length };
     }
     case 'RETRY_TRANSCRIPT': deps.sendToActiveTab(msg); return { ok: true };
