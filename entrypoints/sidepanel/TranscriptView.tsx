@@ -13,6 +13,7 @@ export function TranscriptView(props: {
   const [matchIdx, setMatchIdx] = useState(0);
   const [hovering, setHovering] = useState(false);   // 鼠标悬停在逐字稿区域（按钮显隐条件之一）
   const [away, setAway] = useState(false);           // 当前播放句不在可视范围（按钮显隐条件之二）
+  const lastFollowClick = useRef(0);                 // 点「跟随」按钮时刻：其后 0.8s 忽略 wheel（触摸板惯性不得打断刚恢复的跟随）
 
   const activeEl = () => containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
   /**
@@ -44,9 +45,18 @@ export function TranscriptView(props: {
     const el = activeEl();
     if (!el || typeof el.scrollIntoView !== 'function') return;
     if (userScroll) { refreshAway(); return; }   // 暂停跟随：仅刷新按钮显隐，不滚不恢复
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.scrollIntoView({ block: 'center' });      // 瞬时对齐（smooth 动画与触摸板惯性/0.1s 心跳打架，0.5.3 定案改 auto；小步推进视觉仍平滑）
     refreshAway();
   }, [props.currentTime, userScroll]);
+
+  // scroll 监听必须绑【真正的滚动容器 main】（scroll 事件不冒泡，绑在 .transcript 上永远收不到——
+  // 0.5.2 根因②：暂停中无心跳时按钮显隐冻结）。refreshAway 读实时 DOM，无过期闭包。
+  useEffect(() => {
+    const scroller = containerRef.current?.closest?.('main');
+    if (!scroller) return;
+    scroller.addEventListener('scroll', refreshAway);
+    return () => scroller.removeEventListener('scroll', refreshAway);
+  }, []);
 
   // 播放时间大幅跳变（>30s：刷新视频/换片）→ 自动回到跟随模式（用户需求：刷新后逐字稿跟随当前播放位置）
   const prevTime = useRef(props.currentTime);
@@ -69,6 +79,12 @@ export function TranscriptView(props: {
     setUserScroll(true);   // 浏览搜索结果期间暂停自动跟随（可点「当前位置」恢复）
     const el = containerRef.current?.querySelector(`[data-index="${matches[wrapped]}"]`) as HTMLElement | null | undefined;
     el?.scrollIntoView?.({ block: 'center' });
+  };
+
+  /** 用户滚动意图（滚轮/触摸）：点「跟随」按钮后 0.8s 内忽略——触摸板惯性事件不得把刚恢复的跟随打回暂停 */
+  const onUserScrollIntent = () => {
+    if (Date.now() - lastFollowClick.current < 800) return;
+    setUserScroll(true);
   };
 
   /** 按搜索词拆分文本，命中段渲染为蓝底 <mark> */
@@ -121,8 +137,7 @@ export function TranscriptView(props: {
         <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}
           onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}
           onMouseDown={() => { try { window.getSelection()?.removeAllRanges(); } catch { /* 兼容 */ } }}
-          onScroll={refreshAway}
-          onWheel={() => setUserScroll(true)} onTouchMove={() => setUserScroll(true)}>
+          onWheel={onUserScrollIntent} onTouchMove={onUserScrollIntent}>
           {props.cues.map((c, i) => (
             <div key={i} data-testid={`cue-${i}`} data-index={i}
               class={`cue ${isCurrent(c, i) ? 'active' : ''} ${ql && matches.includes(i) ? 'hit' : ''}`}
@@ -134,13 +149,14 @@ export function TranscriptView(props: {
           ))}
         </div>
         {hovering && away && (
-          <button class="jump-current" data-testid="jump-current" title="回到当前播放位置并恢复跟随"
+          <button class="jump-current" data-testid="jump-current" title="跟随视频当前播放位置"
             onClick={() => {
+              lastFollowClick.current = Date.now();            // 冷却起点：其后 0.8s 忽略惯性 wheel
               setUserScroll(false);
-              activeEl()?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+              activeEl()?.scrollIntoView?.({ block: 'center' }); // 瞬时跳回（无动画即无打断）
               setAway(false);
             }}>
-            ↓ 回到当前位置
+            跟随 ↓
           </button>
         )}
       </div>

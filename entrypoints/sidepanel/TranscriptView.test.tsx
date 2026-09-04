@@ -268,3 +268,54 @@ describe('方案 A 与跳变重置（0.5.2 用户定案）', () => {
     restore();
   });
 });
+
+describe('0.5.3 两根因回归（惯性冷却期 + scroll 绑 main）', () => {
+  const mockViewport = (placeAt: () => boolean) => {
+    const orig = Element.prototype.getBoundingClientRect;
+    (Element.prototype as any).getBoundingClientRect = function (this: HTMLElement) {
+      if (this.tagName === 'MAIN') return { top: 0, bottom: 600, left: 0, right: 400, height: 600, width: 400 };
+      if (this.classList?.contains?.('cue') && this.classList.contains('active')) {
+        return placeAt() ? { top: 800, bottom: 850, left: 0, right: 400, height: 50, width: 400 }
+                        : { top: 100, bottom: 150, left: 0, right: 400, height: 50, width: 400 };
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 };
+    };
+    return () => { (Element.prototype as any).getBoundingClientRect = orig; };
+  };
+
+  it('冷却期：点「跟随」后 0.8s 内的 wheel（触摸板惯性）不再把跟随打回暂停', async () => {
+    let farAway = true;
+    const restore = mockViewport(() => farAway);
+    const calls: any[] = [];
+    Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
+    const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
+    const { rerender, getByTestId, findByTestId } = render(view(1));
+    fireEvent.wheel(getByTestId('cue-0'));            // 滑走：暂停跟随
+    fireEvent.mouseEnter(document.querySelector('.transcript')!);
+    const btn = await findByTestId('jump-current');
+    farAway = false;
+    fireEvent.click(btn);                              // 点「跟随」恢复
+    calls.length = 0;
+    fireEvent.wheel(getByTestId('cue-0'));            // 紧随其后的惯性 wheel（冷却期内）
+    rerender(view(1.5));                               // 心跳
+    expect(calls.length).toBeGreaterThanOrEqual(1);    // 跟随仍在工作（惯性没打断它）
+    restore();
+  });
+
+  it('暂停中滑动：main 滚动事件实时更新按钮显隐（0.5.2 根因②回归——此前 onScroll 绑错容器冻结状态）', async () => {
+    let farAway = false;   // 初始当前句在视口内（按钮不显示）
+    const restore = mockViewport(() => farAway);
+    Element.prototype.scrollIntoView = function () {};
+    const view = () => <main><TranscriptView cues={cues} videoId="v" currentTime={1} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
+    const { getByTestId, queryByTestId, findByTestId } = render(view());
+    fireEvent.mouseEnter(document.querySelector('.transcript')!);   // hover
+    // 暂停中（currentTime 恒定无心跳）：当前句在视口 → 按钮不显示
+    expect(queryByTestId('jump-current')).toBeNull();
+    // 用户滑远：wheel 暂停跟随（此刻 farAway 未变，away 仍 false——冻结状态）→ main 滚动 → 按钮出现
+    fireEvent.wheel(getByTestId('cue-0'));
+    farAway = true;
+    fireEvent.scroll(document.querySelector('main')!);
+    await findByTestId('jump-current');                 // 滚动事件驱动按钮出现（不再冻结）
+    restore();
+  });
+});
