@@ -17,6 +17,18 @@ export function TranscriptView(props: {
 
   const activeEl = () => containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
   /**
+   * 滚动当前句到可视区（0.5.4 定案：绕开 scrollIntoView——真实 Chrome 在触摸板手势活跃期会抑制
+   * 程序化滚动，且其派生的 scroll 事件风暴会引发按钮重挂载吞掉 click；直设 scrollTop 是最底层
+   * API，不受手势干预，行为完全可控）。
+   */
+  const scrollToCue = (el: HTMLElement | null | undefined) => {
+    const scroller = containerRef.current?.closest?.('main') as HTMLElement | null;
+    if (!el || !scroller) return;
+    const er = el.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
+    scroller.scrollTop = scroller.scrollTop + (er.top - sr.top) + (er.height - sr.height) / 2;   // 居中
+  };
+  const scrollActiveIntoView = () => scrollToCue(activeEl());
+  /**
    * 当前句是否在可视范围——参照物必须是【滚动容器的可视矩形】（最近的 main 祖先），
    * 绝不能用逐字稿内容区自身（它包住全部内容，任何句子都"在其中"，判定恒真——
    * 0.5.0 的根因：恒真导致滚动暂停瞬间被重置，播放/暂停都滚不动）。
@@ -42,10 +54,9 @@ export function TranscriptView(props: {
   // 不做"滑回视口自动恢复"（0.5.1 的自动恢复与"跟随保证当前句可见"互相成全成陷阱，滑不动）。
   // 跟随对齐 block:'center'——当前句显示在窗口中间（用户定案，不贴底）。
   useEffect(() => {
-    const el = activeEl();
-    if (!el || typeof el.scrollIntoView !== 'function') return;
+    if (!activeEl()) return;
     if (userScroll) { refreshAway(); return; }   // 暂停跟随：仅刷新按钮显隐，不滚不恢复
-    el.scrollIntoView({ block: 'center' });      // 瞬时对齐（smooth 动画与触摸板惯性/0.1s 心跳打架，0.5.3 定案改 auto；小步推进视觉仍平滑）
+    scrollActiveIntoView();                       // scrollTop 直设居中（0.5.4：绕开 scrollIntoView 的手势抑制）
     refreshAway();
   }, [props.currentTime, userScroll]);
 
@@ -76,9 +87,8 @@ export function TranscriptView(props: {
     if (!matches.length) return;
     const wrapped = (idx + matches.length) % matches.length;
     setMatchIdx(wrapped);
-    setUserScroll(true);   // 浏览搜索结果期间暂停自动跟随（可点「当前位置」恢复）
-    const el = containerRef.current?.querySelector(`[data-index="${matches[wrapped]}"]`) as HTMLElement | null | undefined;
-    el?.scrollIntoView?.({ block: 'center' });
+    setUserScroll(true);   // 浏览搜索结果期间暂停自动跟随（可点「跟随」恢复）
+    scrollToCue(containerRef.current?.querySelector(`[data-index="${matches[wrapped]}"]`) as HTMLElement | null | undefined);
   };
 
   /** 用户滚动意图（滚轮/触摸）：点「跟随」按钮后 0.8s 内忽略——触摸板惯性事件不得把刚恢复的跟随打回暂停 */
@@ -150,10 +160,11 @@ export function TranscriptView(props: {
         </div>
         {hovering && away && (
           <button class="jump-current" data-testid="jump-current" title="跟随视频当前播放位置"
-            onClick={() => {
+            onMouseDown={(e) => {
+              e.preventDefault();                              // 防焦点转移
               lastFollowClick.current = Date.now();            // 冷却起点：其后 0.8s 忽略惯性 wheel
               setUserScroll(false);
-              activeEl()?.scrollIntoView?.({ block: 'center' }); // 瞬时跳回（无动画即无打断）
+              scrollActiveIntoView();                          // scrollTop 直设跳回（mousedown 即执行，不等 click——防 DOM 重挂载吞点击）
               setAway(false);
             }}>
             跟随 ↓
