@@ -98,74 +98,61 @@ it('折叠选区（仅点击无划选）不触发 onSelect', () => {
   unmount();
 });
 
-/** jsdom 的 scrollTop 恒 0（无布局）——对 main 实例 defineProperty 捕获 scrollTop 写入（0.5.4 直设 scrollTop 的断言依据） */
-const scrollTopSpy = () => {
-  const mainEl = document.querySelector('main') as HTMLElement;
-  const writes: number[] = [];
-  let val = 0;
-  Object.defineProperty(mainEl, 'scrollTop', {
-    get: () => val,
-    set: (v: number) => { val = v; writes.push(v); },
-    configurable: true,
-  });
-  return writes;
+/** 0.6.0 跟随回归 scrollIntoView（smooth center）：spy 计数程序滚动调用 */
+const intoViewSpy = () => {
+  const calls: any[] = [];
+  Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
+  return calls;
 };
 
-describe('滚动跟随（2026-09 用户需求；0.5.1 视口判定修复后的规则）', () => {
-  /** mock 视口：main 可视区 0~600px；当前句按 placeAt（true=滚出视口 800px 处）放置 */
-  const mockViewport = (placeAt: () => boolean) => {
-    const orig = Element.prototype.getBoundingClientRect;
-    (Element.prototype as any).getBoundingClientRect = function (this: HTMLElement) {
-      if (this.tagName === 'MAIN') return { top: 0, bottom: 600, left: 0, right: 400, height: 600, width: 400 };
-      if (this.classList?.contains?.('cue') && this.classList.contains('active')) {
-        return placeAt() ? { top: 800, bottom: 850, left: 0, right: 400, height: 50, width: 400 }
-                        : { top: 100, bottom: 150, left: 0, right: 400, height: 50, width: 400 };
-      }
-      return { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 };
-    };
-    return () => { (Element.prototype as any).getBoundingClientRect = orig; };
-  };
-  const scrollSpy = () => {
-    const calls: any[] = [];
-    Element.prototype.scrollIntoView = function (opt?: any) { calls.push(opt); };
-    return calls;
-  };
+describe('滚动跟随（0.6.0 youtube-digest 模式：换句滚动+时间戳豁免）', () => {
+  /** 用户滚动模拟：main 派发 scroll（默认时间窗口外——测试内程序滚动距今远） */
+  const userScrolls = () => { fireEvent.scroll(document.querySelector('main')!); };
 
-
-  it('滚出视口后心跳不拉回（0.5.0 恒真根因回归）；hover 逐字稿区域且不在当前位置时按钮出现', async () => {
-    const restore = mockViewport(() => true);   // 当前句在视口外
+  it('用户滚动（scroll 事件、豁免窗口外）→ 暂停跟随；换句不再拉动', async () => {
+    const calls = intoViewSpy();
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId, queryByTestId, findByTestId } = render(view(1));
-    const writes = scrollTopSpy();                // render 后建立（mount 期首写不计入断言）
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 用户滚动 → 暂停跟随
-    writes.length = 0;
-    rerender(view(1.5));                          // 播放心跳
-    expect(writes.length).toBe(0);                // 不再被拉回（0.5.0 根因：视口判定恒真致瞬间恢复）
-    expect(queryByTestId('jump-current')).toBeNull();     // 未 hover：不显示
-    // mouseenter 不冒泡：派发到 .transcript 容器本身（真实浏览器中鼠标进入必先穿过容器边界）
-    fireEvent.mouseEnter(document.querySelector('.transcript')!);
-    await findByTestId('jump-current');           // hover + 不在当前位置 → 显示
-    restore();
+    calls.length = 0;
+    userScrolls();                                   // 用户滚动（窗口外）→ userScroll=true
+    rerender(view(3.5));                             // 换句（cue-0→cue-1）
+    expect(calls.length).toBe(0);                    // 跟随暂停：换句不滚
+    expect(queryByTestId('jump-current')).toBeNull(); // 未 hover：按钮不显示
+    fireEvent.mouseEnter(document.querySelector('.transcript-wrap')!);
+    await findByTestId('jump-current');               // 关跟随+hover → 显示
   });
 
-  it('按「跟随 ↓」：跳回当前句、恢复跟随、按钮隐藏（mousedown 触发 + scrollTop 直设）', async () => {
-    let farAway = true;                           // 滚出视口 → 按钮出现；按下后置于视口内
-    const restore = mockViewport(() => farAway);
+  it('点「跟随 ↓」（click）：立即直接滚回当前句（不直接滚则按钮无反应——参考项目要点）+ 恢复跟随', async () => {
+    const calls = intoViewSpy();
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId, findByTestId, queryByTestId } = render(view(1));
-    const writes = scrollTopSpy();
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）
-    fireEvent.mouseEnter(document.querySelector('.transcript')!);
+    userScrolls();
+    fireEvent.mouseEnter(document.querySelector('.transcript-wrap')!);
     await findByTestId('jump-current');
-    writes.length = 0;
-    farAway = false;                               // 按下后当前句在视口内
-    fireEvent.mouseDown(getByTestId('jump-current'));   // mousedown 即执行：scrollTop 直设跳回 + 恢复跟随 + away=false
-    expect(queryByTestId('jump-current')).toBeNull();   // 回到当前位置：按钮隐藏
-    expect(writes.length).toBeGreaterThanOrEqual(1);    // 立即发生了滚动写入
-    writes.length = 0;
-    rerender(view(1.9));                           // 心跳：跟随已恢复
-    expect(writes.length).toBeGreaterThanOrEqual(1);
-    restore();
+    calls.length = 0;
+    fireEvent.click(getByTestId('jump-current'));     // click → 立即 scrollIntoView
+    expect(calls.length).toBe(1);
+    expect(queryByTestId('jump-current')).toBeNull(); // 恢复跟随：按钮隐藏
+    calls.length = 0;
+    rerender(view(3.5));                             // 之后换句：跟随恢复工作
+    expect(calls.length).toBe(1);
+  });
+
+  it('程序滚动豁免：跟随换句滚动后 1s 内的 scroll 不误判用户（跟随不被自己打断）', () => {
+    const many = [
+      { start: 0, dur: 1, text: 'first sentence here' },
+      { start: 2, dur: 1, text: 'second sentence here' },
+      { start: 4, dur: 1, text: 'third sentence here' },
+    ];
+    const calls = intoViewSpy();
+    const view = (t: number) => <main><TranscriptView cues={many} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
+    const { rerender } = render(view(0));
+    calls.length = 0;
+    rerender(view(2.5));                             // 换句（0→1）→ 程序滚动（盖时间戳）
+    expect(calls.length).toBe(1);
+    fireEvent.scroll(document.querySelector('main')!);   // 紧随的 scroll（豁免窗口内）——程序 smooth 动画自身
+    rerender(view(4.5));                             // 再换句（1→2）
+    expect(calls.length).toBe(2);                    // 跟随未被误判暂停，仍在滚动
   });
 });
 
@@ -225,107 +212,41 @@ describe('全文搜索（2026-09 用户需求：中英都搜+蓝底高亮+不动
     ];
     const onSeek = vi.fn();
     const { getByTestId } = render(<main><TranscriptView cues={many} videoId="v" currentTime={0} mode="en" onSeek={onSeek} onSelect={() => {}} /></main>);
-    const writes = scrollTopSpy();          // 搜索跳转同走 scrollTop 直设（需 main 滚动容器）
+    const calls = intoViewSpy();             // 0.6.0 搜索跳转走 scrollIntoView（smooth center）
     fireEvent.input(getByTestId('search-input'), { target: { value: 'closures' } });
     expect(getByTestId('match-count').textContent).toBe('1/2');
     fireEvent.keyDown(getByTestId('search-input'), { key: 'Enter' });
     expect(getByTestId('match-count').textContent).toBe('2/2');
     fireEvent.keyDown(getByTestId('search-input'), { key: 'Enter' });
     expect(getByTestId('match-count').textContent).toBe('1/2');      // 循环
-    expect(writes.length).toBeGreaterThanOrEqual(1);   // 跳转滚动了逐字稿
+    expect(calls.length).toBeGreaterThanOrEqual(1);   // 跳转滚动了逐字稿
     expect(onSeek).not.toHaveBeenCalled();             // 不动视频
   });
 });
 
-describe('方案 A 与跳变重置（0.5.2 用户定案）', () => {
-  const mockViewport = (placeAt: () => boolean) => {
-    const orig = Element.prototype.getBoundingClientRect;
-    (Element.prototype as any).getBoundingClientRect = function (this: HTMLElement) {
-      if (this.tagName === 'MAIN') return { top: 0, bottom: 600, left: 0, right: 400, height: 600, width: 400 };
-      if (this.classList?.contains?.('cue') && this.classList.contains('active')) {
-        return placeAt() ? { top: 800, bottom: 850, left: 0, right: 400, height: 50, width: 400 }
-                        : { top: 100, bottom: 150, left: 0, right: 400, height: 50, width: 400 };
-      }
-      return { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 };
-    };
-    return () => { (Element.prototype as any).getBoundingClientRect = orig; };
-  };
+describe('方案 A 与跳变重置（0.6.0 语义）', () => {
+  const userScrolls = () => { fireEvent.scroll(document.querySelector('main')!); };
 
-  it('方案 A：滑回视口内也不自动恢复跟随（0.5.1 自动恢复陷阱回归——恢复只靠按钮）', async () => {
-    let farAway = true;
-    const restore = mockViewport(() => farAway);
+  it('方案 A：恢复跟随只靠点按钮（无自动恢复路径——换句只在跟随态滚）', async () => {
+    const calls = intoViewSpy();
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
-    const { rerender, getByTestId } = render(view(1));
-    const writes = scrollTopSpy();
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 滑走：暂停跟随
-    writes.length = 0;
-    farAway = false;                              // 用户自己滑回当前句附近（当前句进视口）
-    rerender(view(1.5));                          // 心跳
-    expect(writes.length).toBe(0);                // 不自动恢复——不滚动（0.5.1 陷阱回归：此前 activeVisible=true 会恢复+拉回）
-    restore();
+    const { rerender } = render(view(1));
+    calls.length = 0;
+    userScrolls();                                   // 暂停跟随
+    rerender(view(3.5)); rerender(view(5.9));        // 多次换句
+    expect(calls.length).toBe(0);                    // 永不自动恢复（0.5.1 陷阱根除：无任何自动恢复分支）
   });
 
-  it('播放时间大幅跳变（刷新/换片）自动回到跟随模式', () => {
-    const restore = mockViewport(() => false);
+  it('播放时间大幅跳变（刷新/换片）自动回到跟随模式并立即滚回', () => {
+    const calls = intoViewSpy();
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
-    const { rerender, getByTestId } = render(view(100));
-    const writes = scrollTopSpy();
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 暂停跟随
-    writes.length = 0;
-    rerender(view(100.5));                        // 正常心跳推进：跟随保持暂停
-    expect(writes.length).toBe(0);
-    rerender(view(2));                            // 刷新/换片：时间从 100 跳回 2（>30s 跳变）
-    expect(writes.length).toBeGreaterThanOrEqual(1);   // 自动恢复跟随
-    restore();
+    const { rerender } = render(view(100));
+    calls.length = 0;
+    userScrolls();                                   // 暂停跟随
+    rerender(view(100.5));                           // 正常推进
+    expect(calls.length).toBe(0);
+    rerender(view(2));                               // 跳变 >30s
+    expect(calls.length).toBe(1);                    // 自动恢复跟随并立即滚回
   });
 });
 
-describe('0.5.3 两根因回归（惯性冷却期 + scroll 绑 main）', () => {
-  const mockViewport = (placeAt: () => boolean) => {
-    const orig = Element.prototype.getBoundingClientRect;
-    (Element.prototype as any).getBoundingClientRect = function (this: HTMLElement) {
-      if (this.tagName === 'MAIN') return { top: 0, bottom: 600, left: 0, right: 400, height: 600, width: 400 };
-      if (this.classList?.contains?.('cue') && this.classList.contains('active')) {
-        return placeAt() ? { top: 800, bottom: 850, left: 0, right: 400, height: 50, width: 400 }
-                        : { top: 100, bottom: 150, left: 0, right: 400, height: 50, width: 400 };
-      }
-      return { top: 0, bottom: 0, left: 0, right: 0, height: 0, width: 0 };
-    };
-    return () => { (Element.prototype as any).getBoundingClientRect = orig; };
-  };
-
-  it('惯性窗口：按「跟随」后 1.2s 内的 scroll（触摸板惯性残余）不再把跟随打回暂停', async () => {
-    let farAway = true;
-    const restore = mockViewport(() => farAway);
-    const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
-    const { rerender, getByTestId, findByTestId } = render(view(1));
-    const writes = scrollTopSpy();
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）            // 滑走：暂停跟随
-    fireEvent.mouseEnter(document.querySelector('.transcript')!);
-    const btn = await findByTestId('jump-current');
-    farAway = false;
-    fireEvent.mouseDown(btn);                          // 按「跟随」恢复
-    writes.length = 0;
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）            // 紧随其后的惯性 wheel（冷却期内）
-    rerender(view(1.5));                               // 心跳
-    expect(writes.length).toBeGreaterThanOrEqual(1);  // 跟随仍在工作（惯性没打断它）
-    restore();
-  });
-
-  it('暂停中滑动：main 滚动事件实时更新按钮显隐（0.5.2 根因②回归——此前 onScroll 绑错容器冻结状态）', async () => {
-    let farAway = false;   // 初始当前句在视口内（按钮不显示）
-    const restore = mockViewport(() => farAway);
-    Element.prototype.scrollIntoView = function () {};
-    const view = () => <main><TranscriptView cues={cues} videoId="v" currentTime={1} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
-    const { getByTestId, queryByTestId, findByTestId } = render(view());
-    fireEvent.mouseEnter(document.querySelector('.transcript')!);   // hover
-    // 暂停中（currentTime 恒定无心跳）：当前句在视口 → 按钮不显示
-    expect(queryByTestId('jump-current')).toBeNull();
-    // 用户滑远：wheel 暂停跟随（此刻 farAway 未变，away 仍 false——冻结状态）→ main 滚动 → 按钮出现
-    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）
-    farAway = true;
-    fireEvent.scroll(document.querySelector('main')!);
-    await findByTestId('jump-current');                 // 滚动事件驱动按钮出现（不再冻结）
-    restore();
-  });
-});
