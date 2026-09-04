@@ -137,7 +137,7 @@ describe('滚动跟随（2026-09 用户需求；0.5.1 视口判定修复后的�
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId, queryByTestId, findByTestId } = render(view(1));
     const writes = scrollTopSpy();                // render 后建立（mount 期首写不计入断言）
-    fireEvent.wheel(getByTestId('cue-0'));       // 用户滚动 → 暂停跟随
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 用户滚动 → 暂停跟随
     writes.length = 0;
     rerender(view(1.5));                          // 播放心跳
     expect(writes.length).toBe(0);                // 不再被拉回（0.5.0 根因：视口判定恒真致瞬间恢复）
@@ -154,7 +154,7 @@ describe('滚动跟随（2026-09 用户需求；0.5.1 视口判定修复后的�
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId, findByTestId, queryByTestId } = render(view(1));
     const writes = scrollTopSpy();
-    fireEvent.wheel(getByTestId('cue-0'));
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）
     fireEvent.mouseEnter(document.querySelector('.transcript')!);
     await findByTestId('jump-current');
     writes.length = 0;
@@ -257,7 +257,7 @@ describe('方案 A 与跳变重置（0.5.2 用户定案）', () => {
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId } = render(view(1));
     const writes = scrollTopSpy();
-    fireEvent.wheel(getByTestId('cue-0'));       // 滑走：暂停跟随
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 滑走：暂停跟随
     writes.length = 0;
     farAway = false;                              // 用户自己滑回当前句附近（当前句进视口）
     rerender(view(1.5));                          // 心跳
@@ -270,7 +270,7 @@ describe('方案 A 与跳变重置（0.5.2 用户定案）', () => {
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId } = render(view(100));
     const writes = scrollTopSpy();
-    fireEvent.wheel(getByTestId('cue-0'));       // 暂停跟随
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）       // 暂停跟随
     writes.length = 0;
     rerender(view(100.5));                        // 正常心跳推进：跟随保持暂停
     expect(writes.length).toBe(0);
@@ -294,19 +294,19 @@ describe('0.5.3 两根因回归（惯性冷却期 + scroll 绑 main）', () => {
     return () => { (Element.prototype as any).getBoundingClientRect = orig; };
   };
 
-  it('冷却期：按「跟随」后 0.8s 内的 wheel（触摸板惯性）不再把跟随打回暂停', async () => {
+  it('惯性窗口：按「跟随」后 1.2s 内的 scroll（触摸板惯性残余）不再把跟随打回暂停', async () => {
     let farAway = true;
     const restore = mockViewport(() => farAway);
     const view = (t: number) => <main><TranscriptView cues={cues} videoId="v" currentTime={t} mode="en" onSeek={() => {}} onSelect={() => {}} /></main>;
     const { rerender, getByTestId, findByTestId } = render(view(1));
     const writes = scrollTopSpy();
-    fireEvent.wheel(getByTestId('cue-0'));            // 滑走：暂停跟随
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）            // 滑走：暂停跟随
     fireEvent.mouseEnter(document.querySelector('.transcript')!);
     const btn = await findByTestId('jump-current');
     farAway = false;
     fireEvent.mouseDown(btn);                          // 按「跟随」恢复
     writes.length = 0;
-    fireEvent.wheel(getByTestId('cue-0'));            // 紧随其后的惯性 wheel（冷却期内）
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）            // 紧随其后的惯性 wheel（冷却期内）
     rerender(view(1.5));                               // 心跳
     expect(writes.length).toBeGreaterThanOrEqual(1);  // 跟随仍在工作（惯性没打断它）
     restore();
@@ -322,7 +322,7 @@ describe('0.5.3 两根因回归（惯性冷却期 + scroll 绑 main）', () => {
     // 暂停中（currentTime 恒定无心跳）：当前句在视口 → 按钮不显示
     expect(queryByTestId('jump-current')).toBeNull();
     // 用户滑远：wheel 暂停跟随（此刻 farAway 未变，away 仍 false——冻结状态）→ main 滚动 → 按钮出现
-    fireEvent.wheel(getByTestId('cue-0'));
+    fireEvent.scroll(document.querySelector('main')!); fireEvent.scroll(document.querySelector('main')!);   // 用户滚动（首帧可能被程序 pending 豁免，第二帧判定用户）
     farAway = true;
     fireEvent.scroll(document.querySelector('main')!);
     await findByTestId('jump-current');                 // 滚动事件驱动按钮出现（不再冻结）

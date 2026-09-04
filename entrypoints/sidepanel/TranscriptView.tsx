@@ -13,7 +13,12 @@ export function TranscriptView(props: {
   const [matchIdx, setMatchIdx] = useState(0);
   const [hovering, setHovering] = useState(false);   // 鼠标悬停在逐字稿区域（按钮显隐条件之一）
   const [away, setAway] = useState(false);           // 当前播放句不在可视范围（按钮显隐条件之二）
-  const lastFollowClick = useRef(0);                 // 点「跟随」按钮时刻：其后 0.8s 忽略 wheel（触摸板惯性不得打断刚恢复的跟随）
+  // 0.5.5 业界模式（用户批准）：用户滚动意图由 scroll 事件判定（wheel 只是输入信号会误判惯性）。
+  // programmaticPending：一次性豁免——每次程序滚动自身触发的第一个 scroll 不算用户；
+  // programmaticUntil：点「跟随」后的 1.2s 长窗口——触摸板惯性残余的 scroll 在窗口内被吸收（不打回暂停）。
+  const programmaticPending = useRef(false);
+  const programmaticUntil = useRef(0);
+  const recalibrateTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeEl = () => containerRef.current?.querySelector('.cue.active') as HTMLElement | null | undefined;
   /**
@@ -24,6 +29,7 @@ export function TranscriptView(props: {
   const scrollToCue = (el: HTMLElement | null | undefined) => {
     const scroller = containerRef.current?.closest?.('main') as HTMLElement | null;
     if (!el || !scroller) return;
+    programmaticPending.current = true;   // 本次赋值将触发的 scroll 事件是程序自己——一次性豁免
     const er = el.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
     scroller.scrollTop = scroller.scrollTop + (er.top - sr.top) + (er.height - sr.height) / 2;   // 居中
   };
@@ -60,14 +66,24 @@ export function TranscriptView(props: {
     refreshAway();
   }, [props.currentTime, userScroll]);
 
-  // scroll 监听必须绑【真正的滚动容器 main】（scroll 事件不冒泡，绑在 .transcript 上永远收不到——
-  // 0.5.2 根因②：暂停中无心跳时按钮显隐冻结）。refreshAway 读实时 DOM，无过期闭包。
+  // scroll 监听绑【真正的滚动容器 main】（scroll 不冒泡）：既刷新按钮显隐（0.5.2 根因②），
+  // 也作为用户滚动意图的唯一判定源（0.5.5 业界模式）。程序豁免两道：
+  // 一次性 pending（程序滚动自身的 scroll）+ 按钮 1.2s 窗口（惯性残余被吸收）。
   useEffect(() => {
     const scroller = containerRef.current?.closest?.('main');
     if (!scroller) return;
-    scroller.addEventListener('scroll', refreshAway);
-    return () => scroller.removeEventListener('scroll', refreshAway);
+    const onScroll = () => {
+      refreshAway();
+      if (programmaticPending.current) { programmaticPending.current = false; return; }
+      if (Date.now() < programmaticUntil.current) return;   // 点「跟随」后的惯性窗口：不算用户
+      setUserScroll(true);                                   // 用户真滚动（含其惯性多帧）：暂停跟随
+    };
+    scroller.addEventListener('scroll', onScroll);
+    return () => scroller.removeEventListener('scroll', onScroll);
   }, []);
+
+  // 卸载时清理重校循环
+  useEffect(() => () => { if (recalibrateTimer.current) clearInterval(recalibrateTimer.current); }, []);
 
   // 播放时间大幅跳变（>30s：刷新视频/换片）→ 自动回到跟随模式（用户需求：刷新后逐字稿跟随当前播放位置）
   const prevTime = useRef(props.currentTime);
@@ -89,12 +105,6 @@ export function TranscriptView(props: {
     setMatchIdx(wrapped);
     setUserScroll(true);   // 浏览搜索结果期间暂停自动跟随（可点「跟随」恢复）
     scrollToCue(containerRef.current?.querySelector(`[data-index="${matches[wrapped]}"]`) as HTMLElement | null | undefined);
-  };
-
-  /** 用户滚动意图（滚轮/触摸）：点「跟随」按钮后 0.8s 内忽略——触摸板惯性事件不得把刚恢复的跟随打回暂停 */
-  const onUserScrollIntent = () => {
-    if (Date.now() - lastFollowClick.current < 800) return;
-    setUserScroll(true);
   };
 
   /** 按搜索词拆分文本，命中段渲染为蓝底 <mark> */
@@ -146,8 +156,7 @@ export function TranscriptView(props: {
       <div class="transcript-wrap" onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
         <div class="transcript" ref={containerRef} onMouseUp={onMouseUp}
           onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}
-          onMouseDown={() => { try { window.getSelection()?.removeAllRanges(); } catch { /* 兼容 */ } }}
-          onWheel={onUserScrollIntent} onTouchMove={onUserScrollIntent}>
+          onMouseDown={() => { try { window.getSelection()?.removeAllRanges(); } catch { /* 兼容 */ } }}>
           {props.cues.map((c, i) => (
             <div key={i} data-testid={`cue-${i}`} data-index={i}
               class={`cue ${isCurrent(c, i) ? 'active' : ''} ${ql && matches.includes(i) ? 'hit' : ''}`}
@@ -162,10 +171,19 @@ export function TranscriptView(props: {
           <button class="jump-current" data-testid="jump-current" title="跟随视频当前播放位置"
             onMouseDown={(e) => {
               e.preventDefault();                              // 防焦点转移
-              lastFollowClick.current = Date.now();            // 冷却起点：其后 0.8s 忽略惯性 wheel
               setUserScroll(false);
-              scrollActiveIntoView();                          // scrollTop 直设跳回（mousedown 即执行，不等 click——防 DOM 重挂载吞点击）
+              // 1.2s 程序窗口（吸收触摸板惯性残余的 scroll——不再把跟随打回暂停）
+              programmaticUntil.current = Date.now() + 1200;
+              scrollActiveIntoView();                          // 立即跳回（惯性会冲掉头几次，重校循环兜底）
               setAway(false);
+              // 重校循环：100ms × 1.2s——惯性单调衰减，循环内赋值必然最终生效；暂停中无心跳时尤其关键
+              if (recalibrateTimer.current) clearInterval(recalibrateTimer.current);
+              recalibrateTimer.current = setInterval(() => {
+                scrollActiveIntoView();
+                if (Date.now() >= programmaticUntil.current && recalibrateTimer.current) {
+                  clearInterval(recalibrateTimer.current); recalibrateTimer.current = null;
+                }
+              }, 100);
             }}>
             跟随 ↓
           </button>
