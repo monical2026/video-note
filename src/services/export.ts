@@ -36,11 +36,20 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
   const parts = [`> 📌 一句话总结：${summary.oneLiner}`, ''];
   const ends = sections.map((s, i) => (i + 1 < sections.length ? sections[i + 1]!.start : Infinity));
   sections.forEach((sec, i) => {
-    parts.push(`## [${formatTime(sec.start)}](${tsLink(video.videoId, sec.start)}) ${sec.title}`, '');
-    sec.points.forEach((p) => parts.push(`- ${p}`));
-    parts.push('');
+    const endMark = sec.end != null ? ` ~ [${formatTime(sec.end)}](${tsLink(video.videoId, sec.end)})` : '';
+    parts.push(`## [${formatTime(sec.start)}](${tsLink(video.videoId, sec.start)})${endMark} ${sec.title}`, '');
+    if (sec.overview) parts.push(`> ${sec.overview}`, '');
+    if (sec.problem) parts.push(`> 🎯 **解决的问题**：${sec.problem}`, '');
+    if (sec.useCase) parts.push(`> 🧭 **应用场景**：${sec.useCase}`, '');
+    if (sec.clipWorthy) parts.push(`> ✂️ **${sec.clipWorthy.level === 'high' ? '切片价值：高' : sec.clipWorthy.level === 'medium' ? '切片价值：中' : '切片价值：低'}**——${sec.clipWorthy.reason}`, '');
+    if (sec.points.length) { sec.points.forEach((p) => parts.push(`- ${p}`)); parts.push(''); }
     sorted.filter((n) => n.start >= sec.start && n.start < ends[i]!).forEach((n) => parts.push(noteBlock(video.videoId, n), ''));
   });
+  if (summary.keyQuotes?.length) {
+    parts.push('## 💬 金句', '');
+    summary.keyQuotes.forEach((k) => parts.push(`- [${formatTime(k.start)}](${tsLink(video.videoId, k.start)})「${k.quote}」`));
+    parts.push('');
+  }
   // 不落在任何小节的笔记，追加到尾部时间线
   const covered = new Set(sections.flatMap((s, i) => sorted.filter((n) => n.start >= s.start && n.start < ends[i]!).map((n) => n.id)));
   sorted.filter((n) => !covered.has(n.id)).forEach((n) => parts.push(noteBlock(video.videoId, n), ''));

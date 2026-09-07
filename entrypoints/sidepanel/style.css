@@ -76,3 +76,17 @@ button.primary:hover { background: #0860c4; }
 .excerpt-edit { width: 100%; font-size: 13px; padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; font-family: inherit; }
 
 .danger { color: #cf222e; }
+
+/* ===== AI 摘要 v2：主题分节新字段（2026-09-07） ===== */
+.summary-section { border: 1px solid #e1e4e8; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.summary-section h3 { font-size: 13px; margin: 0 0 6px; }
+.ts-range { color: #8b949e; font-size: 11px; }
+.sec-overview { font-size: 12px; line-height: 1.6; color: #24292f; margin-bottom: 4px; }
+.sec-meta { font-size: 12px; color: #57606a; margin: 2px 0; }
+.sec-clip-reason { font-size: 11px; color: #6e7781; margin-top: 4px; }
+.clip-badge { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 10px; font-size: 11px; vertical-align: 1px; }
+.clip-high { background: #dafbe1; color: #116329; }
+.clip-medium { background: #fff8c5; color: #9a6700; }
+.clip-low { background: #eff2f5; color: #57606a; }
+.quotes li { margin-bottom: 8px; }
+.quotes blockquote { margin: 2px 0 0; padding: 4px 10px; border-left: 3px solid #0969da; font-size: 12px; color: #24292f; background: #f6f8fa; border-radius: 0 4px 4px 0; }

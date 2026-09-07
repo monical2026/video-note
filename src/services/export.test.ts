@@ -9,16 +9,25 @@ const notes: Note[] = [
 ];
 const summary: Summary = {
   videoId: 'abc', oneLiner: '讲透闭包',
-  sections: [{ start: 192, title: '闭包的定义与直觉', points: ['闭包=函数+词法环境'] }],
+  sections: [{ start: 192, end: 260, title: '闭包的定义与直觉', overview: '用背包比喻引入闭包概念。', problem: '理解闭包到底捕获了什么', useCase: '解释回调中的变量存活', points: ['闭包=函数+词法环境'], clipWorthy: { level: 'high', reason: '完整案例自成一体' } }],
+  keyQuotes: [{ quote: 'A closure is a backpack.', start: 200 }],
   knowledge: [{ term: 'closure', desc: '函数+词法环境' }], prerequisites: ['作用域'],
   model: 'm', generatedAt: 1,
 };
 
 it('笔记嵌入所属摘要小节', () => {
   const md = buildFusedMarkdown({ video, notes, summary });
-  expect(md).toContain('## [03:12](https://www.youtube.com/watch?v=abc&t=192s) 闭包的定义与直觉');
+  // 摘要 v2：节标题带起止范围（end 时间戳跳转链接）
+  expect(md).toContain('## [03:12](https://www.youtube.com/watch?v=abc&t=192s) ~ [04:20](https://www.youtube.com/watch?v=abc&t=260s) 闭包的定义与直觉');
   expect(md.indexOf('⭐ **我的笔记**')).toBeGreaterThan(md.indexOf('闭包的定义与直觉'));
   expect(md).toContain('🤖 **AI 解释**');
+  // 摘要 v2 字段（2026-09-07）：概述/解决的问题/应用场景/切片价值/金句
+  expect(md).toContain('> 用背包比喻引入闭包概念。');
+  expect(md).toContain('🎯 **解决的问题**：理解闭包到底捕获了什么');
+  expect(md).toContain('🧭 **应用场景**：解释回调中的变量存活');
+  expect(md).toContain('✂️ **切片价值：高**——完整案例自成一体');
+  expect(md).toContain('## 💬 金句');
+  expect(md).toContain('「A closure is a backpack.」');
   expect(md).toContain('## 📚 知识点清单');
   expect(md).toContain('source: "https://youtube.com/watch?v=abc"');
   expect(md).toContain('title: "Closures Explained"');

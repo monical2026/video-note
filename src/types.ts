@@ -16,10 +16,23 @@ export interface VideoMeta {
   videoId: string; title: string; channel: string; url: string;
   captionLang: string; fetchedAt: number;
 }
-export interface SummarySection { start: number; title: string; points: string[]; }
+/** 切片价值：该节是否自成一体、值得单独剪出来分享或作剪辑参考（用户 2026-09-07 定案用途） */
+export interface ClipWorthiness { level: 'high' | 'medium' | 'low'; reason: string; }
+export interface SummarySection {
+  start: number; end?: number;        // 起止时间（切片范围）
+  title: string;
+  overview?: string;                  // 这一小节讲了什么（两三句概述）
+  problem?: string;                   // 这一小节能解决什么问题
+  useCase?: string;                   // 学完能用在什么地方
+  points: string[];
+  clipWorthy?: ClipWorthiness;
+}
+/** 金句：带时间戳，聚焦反直觉洞察/惊人事实/轶事/点透本质的表达 */
+export interface KeyQuote { quote: string; start: number; }
 export interface Summary {
   videoId: string; oneLiner: string;
   sections: SummarySection[];
+  keyQuotes?: KeyQuote[];
   knowledge: { term: string; desc: string }[];
   prerequisites: string[];
   model: string; generatedAt: number;
