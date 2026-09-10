@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/preact';
 import { App } from './App';
 import { activeTab, displayMode } from './state';
+import { DEFAULT_SETTINGS } from '../../src/storage/settings';
 import type { Settings } from '../../src/types';
 
-const settings: Settings = { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {} };
+const settings: Settings = { ...DEFAULT_SETTINGS };
 const cues = [{ start: 1, dur: 2, text: 'hello', zh: '你好' }];
 
 function stubBrowser() {

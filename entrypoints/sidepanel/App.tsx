@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { activeTab, cues, currentTime, displayMode, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
 import type { StreamInfo } from '../../src/services/llm-translate';
+import type { Theme } from '../../src/types';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
 import { SummaryView } from './SummaryView';
@@ -52,6 +53,15 @@ export function App() {
     await loadVideoData(meta.videoId);
     if (autoFetch && !cues.value.length) sendMsg({ type: 'RETRY_TRANSCRIPT' });   // 未抓取：active tab 自动抓
   };
+
+  // 主题应用：html data-theme 驱动三套 CSS token（light/dark/amber）；设置加载/保存后即时切换。
+  // settings signal 初始为 null，加载完成时本 effect 必然触发，无需单独的 mount 拉取
+  const applyTheme = (t: Theme) => {
+    document.documentElement.setAttribute('data-theme', t);
+    // 同步写 localStorage 镜像：下次面板打开由 main.tsx 在首绘前读取，消除主题闪切（FOUC）
+    try { localStorage.setItem('vn-theme', t); } catch { /* 存储不可用仅影响下次首绘，静默 */ }
+  };
+  useEffect(() => { if (settings.value) applyTheme(settings.value.theme); }, [settings.value?.theme]);
 
   useEffect(() => {
     refreshSettings();
@@ -268,8 +278,10 @@ export function App() {
           videoId={videoInfo.value?.videoId ?? ''} onSeek={(t) => sendMsg({ type: 'SEEK', t })}
         />}
         {tab === 'library' && <LibraryView currentVideoId={videoInfo.value?.videoId ?? ''} />}
-        {tab === 'settings' && <SettingsView
-          settings={settings.value ?? { displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {} }}
+        {/* 真实设置就绪才渲染：SettingsView 表单 state 仅首挂载从 props 取值，
+            若用兜底字面量提前挂载，stale seed 会在保存时覆盖已存的设置（主题/LLM key） */}
+        {tab === 'settings' && settings.value && <SettingsView
+          settings={settings.value}
           onSave={async (patch) => {
             await sendMsg({ type: 'SAVE_SETTINGS', patch });
             await refreshSettings();

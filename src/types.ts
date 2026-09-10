@@ -40,7 +40,10 @@ export interface Summary {
 export interface LlmConfig { baseUrl: string; apiKey: string; model: string; }
 export interface Term { en: string; zh: string; }   // 术语表：全片统一译法（润色阶段产出，翻译批次复用）
 export interface TranscriptRecord { cues: Cue[]; terms?: Term[]; polishedAt?: number; raw?: Cue[]; }  // transcripts store 存储形状（旧数据是纯 Cue[] 数组；raw=原始碎行，重新分段的原料）
+export const THEMES = ['light', 'dark', 'amber'] as const;  // 界面主题全集：Theme 类型/归一化/设置按钮共用此源
+export type Theme = typeof THEMES[number];
 export interface Settings {
+  theme: Theme;                    // 界面主题（三套可切换，2026-09-07 用户需求）
   displayMode: DisplayMode;
   translateChannel: 'free' | 'llm';
   llm: LlmConfig | null;        // null = 未配置

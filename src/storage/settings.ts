@@ -1,9 +1,10 @@
-import type { Settings } from '../types';
+import { THEMES } from '../types';
+import type { Settings, Theme } from '../types';
 
 export interface SettingsArea { get(key: string): Promise<any>; set(obj: Record<string, any>): Promise<void>; }
 const KEY = 'vn-settings';
 export const DEFAULT_SETTINGS: Settings = {
-  displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {},
+  theme: 'light', displayMode: 'bilingual', translateChannel: 'free', llm: null, supadataKey: '', llmKeys: {},
 };
 
 /** area 缺省时用 chrome.storage.local（浏览器环境），node 环境走内存 fallback */
@@ -23,9 +24,14 @@ function memFallback(): SettingsArea {
   return { get: async (k) => m.get(k), set: async (o) => { for (const [k, v] of Object.entries(o)) m.set(k, v); } };
 }
 
+/** theme 合法值归一化：存量脏值/损坏值统一回落 light——storage 边界唯一防线，消费方零防御 */
+export function normalizeTheme(v: unknown): Theme {
+  return (THEMES as readonly string[]).includes(v as string) ? (v as Theme) : 'light';
+}
+
 export async function getSettings(area: SettingsArea = defaultArea()): Promise<Settings> {
   const saved = (await area.get(KEY)) ?? {};
-  return { ...DEFAULT_SETTINGS, ...saved };
+  return { ...DEFAULT_SETTINGS, ...saved, theme: normalizeTheme(saved.theme) };
 }
 
 export async function saveSettings(patch: Partial<Settings>, area: SettingsArea = defaultArea()): Promise<void> {

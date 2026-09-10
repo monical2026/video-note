@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'preact/hooks';
 import type { Note } from '../../src/types';
-import { formatTime, tsLink } from '../../src/utils/time';
+import { formatTime, mdTimestampLink, tsLink } from '../../src/utils/time';
 import { sendMsg, loadVideoData } from './state';
 
 /** 单条笔记复制格式（与融合导出一致） */
 export function noteMarkdown(n: Note): string {
   const icon = n.type === 'value' ? '⭐ **我的笔记**' : '❓ **我的疑惑**';
-  const lines = [`${icon} · [${formatTime(n.start)}](${tsLink(n.videoId, n.start)})`, n.annotation];
+  const lines = [`${icon} · ${mdTimestampLink(n.videoId, n.start)}`, n.annotation];
   if (n.excerpt) lines.push(`「${n.excerpt}」`);
   if (n.excerptZh) lines.push(n.excerptZh);
   if (n.aiExplanation) lines.push('🤖 **AI 解释**：' + n.aiExplanation);

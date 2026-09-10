@@ -1,9 +1,9 @@
 import type { Cue, Note, Summary, VideoMeta } from '../types';
-import { formatTime, tsLink } from '../utils/time';
+import { mdTimestampLink } from '../utils/time';
 
 const noteBlock = (videoId: string, n: Note): string => {
   const icon = n.type === 'value' ? '⭐ **我的笔记**' : '❓ **我的疑惑**';
-  const lines = [`> ${icon} · [${formatTime(n.start)}](${tsLink(videoId, n.start)})`, `> ${n.annotation}`];
+  const lines = [`> ${icon} · ${mdTimestampLink(videoId, n.start)}`, `> ${n.annotation}`];
   if (n.excerpt) lines.push(`> 「${n.excerpt}」`);
   if (n.excerptZh) lines.push('> ' + n.excerptZh);
   if (n.aiExplanation) lines.push('> 🤖 **AI 解释**：' + n.aiExplanation);
@@ -28,7 +28,7 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
   if (!summary) { // 退化：纯笔记时间线
     const body = sorted.length ? ['## 我的笔记', '', ...sorted.flatMap((n) => [noteBlock(video.videoId, n), ''])] : ['> 暂无笔记'];
     if (includeTranscript && transcript?.length) {
-      body.push('## 附录：完整逐字稿', '', ...transcript.map((c) => `- [${formatTime(c.start)}](${tsLink(video.videoId, c.start)}) ${c.text}${c.zh ? ` ｜ ${c.zh}` : ''}`), '');
+      body.push('## 附录：完整逐字稿', '', ...transcript.map((c) => `- ${mdTimestampLink(video.videoId, c.start)} ${c.text}${c.zh ? ` ｜ ${c.zh}` : ''}`), '');
     }
     return [...head, ...body].join('\n');
   }
@@ -36,8 +36,8 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
   const parts = [`> 📌 一句话总结：${summary.oneLiner}`, ''];
   const ends = sections.map((s, i) => (i + 1 < sections.length ? sections[i + 1]!.start : Infinity));
   sections.forEach((sec, i) => {
-    const endMark = sec.end != null ? ` ~ [${formatTime(sec.end)}](${tsLink(video.videoId, sec.end)})` : '';
-    parts.push(`## [${formatTime(sec.start)}](${tsLink(video.videoId, sec.start)})${endMark} ${sec.title}`, '');
+    const endMark = sec.end != null ? ` ~ ${mdTimestampLink(video.videoId, sec.end)}` : '';
+    parts.push(`## ${mdTimestampLink(video.videoId, sec.start)}${endMark} ${sec.title}`, '');
     if (sec.overview) parts.push(`> ${sec.overview}`, '');
     if (sec.problem) parts.push(`> 🎯 **解决的问题**：${sec.problem}`, '');
     if (sec.useCase) parts.push(`> 🧭 **应用场景**：${sec.useCase}`, '');
@@ -47,7 +47,7 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
   });
   if (summary.keyQuotes?.length) {
     parts.push('## 💬 金句', '');
-    summary.keyQuotes.forEach((k) => parts.push(`- [${formatTime(k.start)}](${tsLink(video.videoId, k.start)})「${k.quote}」`));
+    summary.keyQuotes.forEach((k) => parts.push(`- ${mdTimestampLink(video.videoId, k.start)}「${k.quote}」`));
     parts.push('');
   }
   // 不落在任何小节的笔记，追加到尾部时间线
@@ -62,7 +62,7 @@ export function buildFusedMarkdown(input: { video: VideoMeta; notes: Note[]; sum
     parts.push('## 前置知识 / 延伸', '', ...summary.prerequisites.map((p) => `- ${p}`), '');
   }
   if (includeTranscript && transcript?.length) {
-    parts.push('## 附录：完整逐字稿', '', ...transcript.map((c) => `- [${formatTime(c.start)}](${tsLink(video.videoId, c.start)}) ${c.text}${c.zh ? ` ｜ ${c.zh}` : ''}`), '');
+    parts.push('## 附录：完整逐字稿', '', ...transcript.map((c) => `- ${mdTimestampLink(video.videoId, c.start)} ${c.text}${c.zh ? ` ｜ ${c.zh}` : ''}`), '');
   }
   return [...head, ...parts].join('\n');
 }

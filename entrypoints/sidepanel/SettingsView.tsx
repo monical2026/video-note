@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Settings } from '../../src/types';
+import { THEMES } from '../../src/types';
+import type { Settings, Theme } from '../../src/types';
 
 // 常用 LLM 服务商预设：一键填充 baseUrl + model，避免手填出错
 const PRESETS = [
@@ -10,6 +11,7 @@ const PRESETS = [
 
 const emptyLlm = { baseUrl: '', apiKey: '', model: '' };
 const DEFAULT_KEY_HINT = 'sk-…（仅存本机）';
+const THEME_LABEL: Record<Theme, string> = { light: '亮色', dark: '暗色', amber: '琥珀' };
 
 type Provider = 'zhipu' | 'deepseek' | 'openai' | null;
 
@@ -163,6 +165,21 @@ export function SettingsView(props: { settings: Settings; onSave: (patch: Partia
           <span class="hint-line">无字幕视频经 Supadata 生成，免费 100 次/月；视频 URL 会发送至其服务器</span>
           <input type="password" placeholder="sk-…" value={s.supadataKey} onInput={(e) => setS({ ...s, supadataKey: (e.target as HTMLInputElement).value })} />
         </label>
+      </section>
+
+      <section class="settings-card">
+        <h3>外观</h3>
+        <div class="field">
+          <span class="label">界面主题</span>
+          <div class="theme-row" data-testid="theme-row">
+            {THEMES.map((t) => (
+              <button key={t} class={s.theme === t ? 'on' : ''} data-testid={`theme-${t}`} onClick={() => setS({ ...s, theme: t })}>
+                <span class="swatch" data-theme={t}></span>{THEME_LABEL[t]}
+              </button>
+            ))}
+          </div>
+          <span class="hint-line">保存后全界面即时切换：亮色适合白天，暗色适合夜间看视频，琥珀适合长时间阅读逐字稿。</span>
+        </div>
       </section>
 
       <section class="settings-card">

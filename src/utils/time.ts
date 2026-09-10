@@ -9,3 +9,7 @@ export function formatTime(sec: number): string {
 /** YouTube 时间戳跳转链接 */
 export const tsLink = (videoId: string, sec: number): string =>
   `https://www.youtube.com/watch?v=${videoId}&t=${Math.floor(sec)}s`;
+
+/** 时间戳的 Markdown 跳转链接：[mm:ss](watch?v=…&t=…s)——笔记/金句复制与融合导出共用，格式一致性只此一处定义 */
+export const mdTimestampLink = (videoId: string, sec: number): string =>
+  `[${formatTime(sec)}](${tsLink(videoId, sec)})`;

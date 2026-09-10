@@ -1,7 +1,13 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Summary } from '../../src/types';
-import { formatTime } from '../../src/utils/time';
+import { formatTime, mdTimestampLink } from '../../src/utils/time';
 import { sendMsg, summary as summarySignal } from './state';
+
+/** 金句复制格式：时间戳跳转链接 + 原话（与笔记复制一致的 Markdown） */
+export function quoteMarkdown(videoId: string, q: { quote: string; start: number }): string {
+  return `💬 **金句** · ${mdTimestampLink(videoId, q.start)}
+「${q.quote}」`;
+}
 
 const CLIP_LABEL: Record<string, string> = { high: '切片价值：高', medium: '切片价值：中', low: '切片价值：低' };
 const CLIP_CLASS: Record<string, string> = { high: 'clip-high', medium: 'clip-medium', low: 'clip-low' };
@@ -9,6 +15,22 @@ const CLIP_CLASS: Record<string, string> = { high: 'clip-high', medium: 'clip-me
 export function SummaryView(props: { summary: Summary | null; llmConfigured: boolean; videoId?: string; onSeek: (t: number) => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [copiedIdx, setCopiedIdx] = useState(-1);
+  const [copyFailIdx, setCopyFailIdx] = useState(-1);
+  // 单一 timer ref：新点击先清旧定时器，避免上一条的复位把当前「已复制」提前打回
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  const copyQuote = async (videoId: string, k: { quote: string; start: number }, idx: number) => {
+    try {
+      await navigator.clipboard.writeText(quoteMarkdown(videoId, k));
+      setCopiedIdx(idx); setCopyFailIdx(-1);
+    } catch {
+      // 剪贴板失败（如面板失焦 NotAllowedError）必须可见，不能静默
+      setCopyFailIdx(idx); setCopiedIdx(-1);
+    }
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => { setCopiedIdx(-1); setCopyFailIdx(-1); }, 1500);
+  };
   const gen = async () => {
     setBusy(true); setErr('');
     try {
@@ -52,6 +74,12 @@ export function SummaryView(props: { summary: Summary | null; llmConfigured: boo
           <li key={i}>
             <button class="ts" onClick={() => props.onSeek(k.start)}>{formatTime(k.start)}</button>
             <blockquote>{k.quote}</blockquote>
+            <div class="q-ops">
+              <button class="q-copy" data-testid={`quote-copy-${i}`} title="复制金句（含时间戳跳转链接）"
+                onClick={() => copyQuote(props.videoId || s.videoId, k, i)}>
+                {copiedIdx === i ? '已复制 ✓' : copyFailIdx === i ? '复制失败 ✗' : '复制'}
+              </button>
+            </div>
           </li>
         ))}</ul></section>}
       {!!s.knowledge.length && <section><h3>📚 知识点清单</h3>

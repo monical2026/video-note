@@ -2,9 +2,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/preact';
 import { SettingsView } from './SettingsView';
+import { DEFAULT_SETTINGS } from '../../src/storage/settings';
 import type { Settings } from '../../src/types';
 
-const baseSettings = { displayMode: 'bilingual' as const, translateChannel: 'free' as const, llm: null, supadataKey: '', llmKeys: {} };
+const baseSettings: Settings = { ...DEFAULT_SETTINGS };
 
 it('保存时回传完整 patch', async () => {
   const onSave = vi.fn();
@@ -66,4 +67,19 @@ it('展示 capture-note 快捷键的当前实际绑定', async () => {
   });
   const { getByText } = render(<SettingsView settings={{ ...baseSettings }} onSave={vi.fn()} />);
   await waitFor(() => expect(getByText('当前绑定：Alt+N')).toBeTruthy());
+});
+
+describe('外观主题（2026-09-07 用户需求：三套可切换）', () => {
+  it('渲染三个主题按钮；点击选中并随保存提交', async () => {
+    const onSave = vi.fn(async () => {});
+    const { getByTestId, findByText } = render(<SettingsView settings={baseSettings as any} onSave={onSave} />);
+    await findByText('保存设置');
+    expect(getByTestId('theme-light')).toBeTruthy();
+    expect(getByTestId('theme-dark')).toBeTruthy();
+    expect(getByTestId('theme-amber')).toBeTruthy();
+    fireEvent.click(getByTestId('theme-dark'));
+    fireEvent.click(getByTestId('theme-amber'));
+    fireEvent.click(document.querySelector('.save-btn')!);
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'amber' })));
+  });
 });
