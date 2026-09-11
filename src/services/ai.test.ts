@@ -31,3 +31,18 @@ it('summarize 多块 map-reduce 得到结构化 Summary', async () => {
   expect(s.videoId).toBe('v'); expect(s.oneLiner).toBe('讲解闭包');
   expect(s.model).toBe('gpt-x'); expect(s.sections[0]!.points).toEqual(['定义']);
 });
+
+it('金句缺 en 时自动补一次回译（§0.14 用户实测模型偶发省略 en 键）', async () => {
+  // 按请求内容分流：含「回译」的补齐请求返回英文，其余（reduce）返回缺 en 的摘要
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init: any) => {
+    const body = JSON.parse(init.body);
+    const isBack = body.messages.some((m: any) => m.content.includes('回译'));
+    const content = isBack
+      ? JSON.stringify({ t: ['A closure is a backpack.'] })
+      : JSON.stringify({ oneLiner: 'o', sections: [], keyQuotes: [{ quote: '闭包是背包。', start: 5 }], knowledge: [], prerequisites: [] });
+    return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) } as any;
+  }));
+  const s = await summarize(cfg, { videoId: 'v', title: 'T' }, [{ start: 0, dur: 2, text: 'closures capture env' }]);
+  expect(s.keyQuotes?.[0]!.quote).toBe('闭包是背包。');
+  expect(s.keyQuotes?.[0]!.en).toBe('A closure is a backpack.');
+});

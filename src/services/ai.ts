@@ -63,9 +63,11 @@ const SUMMARY_SYSTEM = `你是一名视频内容分析助手。基于带时间�
 - low：依赖前后文铺垫（如承接上文的推导中段）
 
 【金句】3~5 条，聚焦：反直觉的独特洞察 / 惊人的事实数据 / 印象深刻的轶事 / 一句话点透本质的表达。
-每条金句必须成对给出：quote=中文译文，en=说话者的英文原话（逐字稿是英文时必须取原句，清理转写错误与口头填充词 um/uh/you know，保留原始语气与用词）。时间必须真实存在于逐字稿。
+keyQuotes 数组的每个对象都必须同时包含 quote（中文译文）与 en（说话者的英文原话）两个键，禁止省略 en；英文原话取自逐字稿原句，清理转写错误与口头填充词 um/uh/you know，保留原始语气与用词。时间必须真实存在于逐字稿。
 
-所有文字用简体中文（术语/产品名保留英文；金句的 en 字段除外，必须是英文原话）。sections 与 keyQuotes 按时间排序。`;
+所有文字用简体中文（术语/产品名保留英文；金句的 en 字段除外，必须是英文原话）。sections 与 keyQuotes 按时间排序。
+
+【JSON 输出硬规则】字符串值内的英文双引号必须转义为 \\"（金句英文原话含引号时尤须注意）；禁止尾随逗号、禁止注释。`;
 
 export async function summarize(config: LlmConfig, video: { videoId: string; title: string }, cues: Cue[]): Promise<Summary> {
   const chunks = chunkTranscript(cues, 12000);
@@ -98,10 +100,23 @@ export async function summarize(config: LlmConfig, video: { videoId: string; tit
     { role: 'user', content: `视频《${video.title}》\n${finalContext}` },
   ]);
 
+  // 金句 en 兜底（§0.14 用户实测：模型偶发省略 en 键）——缺则补一次小请求回译，失败不阻塞摘要主体
+  const quotes = (r.keyQuotes ?? []).sort((a, b) => a.start - b.start);
+  const missingEn = quotes.filter((k) => !k.en);
+  if (missingEn.length) {
+    try {
+      const tr = await chatJson<{ t: string[] }>(config, [
+        { role: 'system', content: '把中文金句数组回译为英文原话风格（原文来自英文视频逐字稿，保留口语感）。只输出 JSON：{"t":["英文1","英文2"]}' },
+        { role: 'user', content: JSON.stringify(missingEn.map((k) => k.quote)) },
+      ]);
+      missingEn.forEach((k, i) => { if (tr.t?.[i]) k.en = tr.t[i]; });
+    } catch { /* 回译失败则 en 仍缺，UI 自动隐藏英文行 */ }
+  }
+
   return {
     videoId: video.videoId, oneLiner: r.oneLiner,
     sections: (r.sections ?? []).sort((a, b) => a.start - b.start),
-    keyQuotes: (r.keyQuotes ?? []).sort((a, b) => a.start - b.start),
+    keyQuotes: quotes,
     knowledge: r.knowledge ?? [], prerequisites: r.prerequisites ?? [],
     model: config.model, generatedAt: Date.now(),
   };

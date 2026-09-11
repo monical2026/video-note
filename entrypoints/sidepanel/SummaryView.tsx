@@ -58,15 +58,17 @@ export function SummaryView(props: { summary: Summary | null; llmConfigured: boo
             <button class="ts" onClick={() => props.onSeek(sec.start)}>{formatTime(sec.start)}</button>
             {sec.end != null && <span class="ts-range">~ <button class="ts" onClick={() => props.onSeek(sec.end!)}>{formatTime(sec.end)}</button></span>}
             {' '}{sec.title}
-            {sec.clipWorthy && <span class={`clip-badge ${CLIP_CLASS[sec.clipWorthy.level] ?? ''}`} title={sec.clipWorthy.reason}>
-              ✂ {CLIP_LABEL[sec.clipWorthy.level] ?? sec.clipWorthy.level}
-            </span>}
           </h3>
           {sec.overview && <p class="sec-overview">{sec.overview}</p>}
           {sec.problem && <p class="sec-meta"><b>解决的问题：</b>{sec.problem}</p>}
           {sec.useCase && <p class="sec-meta"><b>应用场景：</b>{sec.useCase}</p>}
           {!!sec.points.length && <ul>{sec.points.map((p, j) => <li key={j}>{p}</li>)}</ul>}
-          {sec.clipWorthy?.reason && <p class="sec-clip-reason">✂ {sec.clipWorthy.reason}</p>}
+          {sec.clipWorthy && (
+            <div class="clip-line">
+              <span class={`clip-badge ${CLIP_CLASS[sec.clipWorthy.level] ?? ''}`}>✂ {CLIP_LABEL[sec.clipWorthy.level] ?? sec.clipWorthy.level}</span>
+              <span class="sec-clip-reason">{sec.clipWorthy.reason}</span>
+            </div>
+          )}
         </section>
       ))}
       {!!s.keyQuotes?.length && <section><h3>💬 金句</h3>

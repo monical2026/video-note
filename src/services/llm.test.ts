@@ -20,6 +20,21 @@ it('chatJson 剥离代码围栏', async () => {
   expect(await chatJson(cfg, [])).toEqual({ a: 1 });
 });
 
+it('chatJson 解析失败时带错误自修复重试一次（2026-09-11 用户实测 JSON 9132 报错）', async () => {
+  const f = vi.fn()
+    // 第一次：非法 JSON（字符串值内含未转义引号——金句英文原话高发）
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: '{"a": "他说 "hi" 了"}' } }] }) })
+    // 第二次：模型自修复后的合法 JSON
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: '{"a": "他说 \\"hi\\" 了"}' } }] }) });
+  vi.stubGlobal('fetch', f);
+  const r = await chatJson<{ a: string }>(cfg, [{ role: 'user', content: 'x' }]);
+  expect(r.a).toContain('hi');
+  expect(f).toHaveBeenCalledTimes(2);
+  // 第二次请求把解析错误与原文喂回给模型
+  const fixBody = JSON.parse((f.mock.calls[1] as any[])[1]!.body as string);
+  expect(JSON.stringify(fixBody.messages)).toContain('合法 JSON');
+});
+
 /** 把若干 delta 文本打包成 OpenAI 兼容 SSE 响应体（含无 content 的 role 首 chunk 与 [DONE]） */
 function sseBody(deltas: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();

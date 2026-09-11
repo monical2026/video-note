@@ -60,9 +60,26 @@ export async function chatStream(
   return full;
 }
 
-/** 要求模型返回 JSON 并可靠解析 */
+/** 剥离 LLM 可能包裹的 markdown 代码围栏 */
+const stripFence = (s: string): string => s.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+
+/**
+ * 要求模型返回 JSON 并可靠解析。
+ * 解析失败时带错误信息自修复重试一次（2026-09-11 用户实测：LLM 输出字符串内裸引号致
+ * "Expected property name in JSON at position 9132" 直抛用户）——把 parse 错误与原文
+ * 喂回模型修正；二次仍失败则如实抛出，不再静默吞。
+ */
 export async function chatJson<T>(config: LlmConfig, messages: { role: string; content: string }[]): Promise<T> {
-  const raw = await chat(config, [...messages, { role: 'system', content: '只输出 JSON，不要输出其他内容。' }]);
-  const stripped = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
-  return JSON.parse(stripped) as T;
+  const sys = { role: 'system', content: '只输出 JSON，不要输出其他内容。' };
+  const raw = await chat(config, [...messages, sys]);
+  const stripped = stripFence(raw);
+  try {
+    return JSON.parse(stripped) as T;
+  } catch (e) {
+    const fix = await chat(config, [
+      { role: 'user', content: `以下内容应当是合法 JSON，但解析失败：${(e as Error).message}\n\n原文：\n${stripped}\n\n请只输出修正后的完整 JSON（字符串值内的双引号必须转义为 \\"，无尾随逗号、无注释）。` },
+      sys,
+    ]);
+    return JSON.parse(stripFence(fix)) as T;
+  }
 }

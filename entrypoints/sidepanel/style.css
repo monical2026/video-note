@@ -13,7 +13,7 @@
 /* ---------- 设计 token：亮色专业（默认，Notion 式白底蓝强调） ---------- */
 :root, [data-theme='light'] {
   color-scheme: light;
-  --page-line: #c73e3e;           /* 笔记卡片书页红条（手账 signature） */
+  --page-line: var(--accent);     /* 笔记卡左条随主题 accent（§0.14 色系统一：原固定红） */
   --bg: #ffffff;
   --bg-subtle: #f6f8fa;
   --bg-inset: #eff2f5;
@@ -43,7 +43,7 @@
 /* ---------- 设计 token：暗色护眼（深底柔和高亮，夜间视频场景） ---------- */
 [data-theme='dark'] {
   color-scheme: dark;
-  --page-line: #e05c5c;
+  --page-line: var(--accent);
   --bg: #15171c;
   --bg-subtle: #1c1f26;
   --bg-inset: #22262e;
@@ -72,7 +72,7 @@
 /* ---------- 设计 token：琥珀阅读（米底琥珀强调，长文阅读舒适） ---------- */
 [data-theme='amber'] {
   color-scheme: light;
-  --page-line: #b03a2e;
+  --page-line: var(--accent);
   --bg: #faf6ef;
   --bg-subtle: #f3ecdf;
   --bg-inset: #ece3d2;
@@ -206,7 +206,8 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 
 /* ---------- AI 摘要 ---------- */
 .summary { display: flex; flex-direction: column; gap: 4px; }
-.summary > .oneliner { font-size: 13px; font-weight: 600; color: var(--text); background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; line-height: 1.6; }
+/* 开头一句话总结：引言卡（主题色左条 + 更松的行距） */
+.summary > .oneliner { font-size: 13.5px; font-weight: 600; color: var(--text); background: var(--accent-soft); border-left: 3px solid var(--quote-bar); border-radius: 8px; padding: 11px 14px; margin-bottom: 10px; line-height: 1.7; }
 .summary-section { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: var(--card); box-shadow: var(--shadow-card); }
 .summary-section h3 { font-size: 13px; margin: 0 0 8px; color: var(--text); line-height: 1.5; }
 .ts-range { color: var(--text-muted); font-size: 11px; }
@@ -215,10 +216,13 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .sec-overview { font-size: 12.5px; line-height: 1.65; color: var(--text); margin-bottom: 6px; }
 .sec-meta { font-size: 12px; color: var(--text-secondary); margin: 3px 0; line-height: 1.6; }
 .sec-meta b { color: var(--text); font-weight: 600; }
-.sec-clip-reason { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+.sec-clip-reason { font-size: 11px; color: var(--text-muted); }
 .summary-section ul { margin: 6px 0 0 18px; }
 .summary-section li { font-size: 12.5px; color: var(--text-secondary); line-height: 1.7; }
-.clip-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 500; vertical-align: 1px; }
+.summary-section li::marker { color: var(--accent); }
+/* 切片条：徽章+理由合并一行，虚线与正文分隔（§0.14 排版） */
+.clip-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.clip-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 500; white-space: nowrap; }
 .clip-high { background: var(--clip-high-bg); color: var(--clip-high-fg); }
 .clip-medium { background: var(--clip-medium-bg); color: var(--clip-medium-fg); }
 .clip-low { background: var(--clip-low-bg); color: var(--clip-low-fg); }
