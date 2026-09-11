@@ -61,20 +61,10 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
       setExplainingId('');
     }
   };
-  const exportMd = async (notesOnly: boolean, includeTranscript: boolean) => {
-    const r = await sendMsg<{ markdown: string }>({ type: 'EXPORT', videoId: props.videoId, notesOnly, includeTranscript });
-    const url = URL.createObjectURL(new Blob([r.markdown], { type: 'text/markdown' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = `${props.videoId}-notes.md`; a.click();
-    URL.revokeObjectURL(url);
-  };
-  // 顶部常驻工具栏：记笔记入口 + 导出组（记完一条后仍有入口）
+  // 顶部常驻工具栏：记笔记入口（导出入口 §0.13 起在逐字稿页工具栏「导出」按钮）
   const toolbar = (
     <div class="notes-toolbar">
       {props.onNoteHere && <button class="primary" onClick={props.onNoteHere}>📝 记笔记</button>}
-      <button class="primary" onClick={() => exportMd(false, false)}>导出 Markdown</button>
-      <button class="ghost" onClick={() => exportMd(true, false)}>仅笔记</button>
-      <button class="ghost" onClick={() => exportMd(false, true)}>含逐字稿</button>
     </div>
   );
   if (!props.notes.length) return (

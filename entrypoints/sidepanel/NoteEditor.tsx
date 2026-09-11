@@ -43,7 +43,7 @@ export function NoteEditor() {
           value={excerpt}
           onInput={(e) => setExcerpt((e.target as HTMLTextAreaElement).value)}
         />
-        <textarea placeholder="写批注…" value={annotation} onInput={(e) => setAnnotation((e.target as HTMLTextAreaElement).value)} rows={4} />
+        <textarea class="annotation-edit" placeholder="写批注…" value={annotation} onInput={(e) => setAnnotation((e.target as HTMLTextAreaElement).value)} rows={4} />
         <div class="row">
           <button onClick={() => (noteEditorCtx.value = null)}>取消</button>
           <button class="primary" onClick={save}>保存</button>

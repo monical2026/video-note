@@ -20,7 +20,7 @@ const deps = (over: any = {}) => ({
   sentencesToParagraphs: vi.fn((ss: any[], bps?: number[]) => (bps?.length ? ss.map((x: any) => ({ start: x.start, dur: x.end - x.start, text: x.text, via: 'ai' })) : ss.map((x: any) => ({ start: x.start, dur: x.end - x.start, text: x.text })))),
   aiSegmentBreakpoints: vi.fn(async () => [1]),
   explainConfusion: vi.fn(async () => '解释'), summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: 's', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
-  buildFusedMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
+  buildExportMarkdown: vi.fn(() => '# md'), broadcast: vi.fn(), sendToActiveTab: vi.fn(),
   listVideosWithNotes: vi.fn(async () => [{ video: { videoId: 'v', title: 'T', channel: 'C', url: 'u', captionLang: 'en', fetchedAt: 1 }, noteCount: 3, lastAt: 9 }]), ...over,
 });
 

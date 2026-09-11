@@ -4,9 +4,16 @@
    三套主题（light / dark / amber）通过 <html data-theme> 切换。
    ============================================================ */
 
+/* ---------- 跨主题共享 token：字体角色（§0.13 手账×仪表混搭） ---------- */
+:root {
+  --font-content: 'Songti SC', 'STSong', 'Noto Serif SC', Georgia, serif;  /* 批注/金句：书页摘录质感 */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;        /* 时间戳/数据：仪表等宽 */
+}
+
 /* ---------- 设计 token：亮色专业（默认，Notion 式白底蓝强调） ---------- */
 :root, [data-theme='light'] {
   color-scheme: light;
+  --page-line: #c73e3e;           /* 笔记卡片书页红条（手账 signature） */
   --bg: #ffffff;
   --bg-subtle: #f6f8fa;
   --bg-inset: #eff2f5;
@@ -20,8 +27,8 @@
   --accent-hover: #0860c4;
   --accent-contrast: #ffffff;
   --accent-soft: #ddf4ff;
-  --highlight: #fff8c5;           /* 当前句底色 */
-  --highlight-hover: #fdf3c8;
+  --highlight: #e6f1fc;           /* 当前句底色（淡蓝，2026-09-11 用户定案替代黄色） */
+  --highlight-hover: #d9e9fa;
   --quote-bar: var(--accent);     /* 引言条跟随强调色（各主题不再重复声明） */
   --danger: #cf222e;
   --success: #1a7f37;
@@ -36,6 +43,7 @@
 /* ---------- 设计 token：暗色护眼（深底柔和高亮，夜间视频场景） ---------- */
 [data-theme='dark'] {
   color-scheme: dark;
+  --page-line: #e05c5c;
   --bg: #15171c;
   --bg-subtle: #1c1f26;
   --bg-inset: #22262e;
@@ -49,8 +57,8 @@
   --accent-hover: #8ec2ff;
   --accent-contrast: #0e1116;
   --accent-soft: #1d3346;
-  --highlight: #33321a;
-  --highlight-hover: #3c3a20;
+  --highlight: #1b2b3e;
+  --highlight-hover: #213450;
   --danger: #ff7b72;
   --success: #7ee787;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -64,6 +72,7 @@
 /* ---------- 设计 token：琥珀阅读（米底琥珀强调，长文阅读舒适） ---------- */
 [data-theme='amber'] {
   color-scheme: light;
+  --page-line: #b03a2e;
   --bg: #faf6ef;
   --bg-subtle: #f3ecdf;
   --bg-inset: #ece3d2;
@@ -77,8 +86,8 @@
   --accent-hover: #9a5a0c;
   --accent-contrast: #fffdf8;
   --accent-soft: #f7e8d0;
-  --highlight: #fdeeb8;
-  --highlight-hover: #fae8a4;
+  --highlight: #e4eef9;
+  --highlight-hover: #d6e4f4;
   --danger: #c0392b;
   --success: #4d7c0f;
   --shadow-card: 0 1px 3px rgba(93, 74, 44, 0.1);
@@ -129,11 +138,14 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .search-bar button:disabled { opacity: 0.35; cursor: default; }
 .transcript-wrap { position: relative; }
 .transcript { padding: 2px 12px; }
-.cue { padding: 7px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 1px; }
+/* §0.13 手账×仪表：时间戳等宽右对齐成列（grid 首列）+ 行间悬浮细线（::after 两端留白避开圆角）+ 大圆角行 */
+.cue { position: relative; display: grid; grid-template-columns: 46px 1fr; column-gap: 10px; padding: 8px 10px 8px 6px; border-radius: 10px; cursor: pointer; }
+.cue:not(:last-child)::after { content: ''; position: absolute; left: 56px; right: 10px; bottom: 0; height: 1px; background: color-mix(in srgb, var(--border) 55%, transparent); }
+.cue:hover::after, .cue.active::after { display: none; }
 .cue:hover { background: var(--bg-subtle); }
 .cue.active { background: var(--highlight); }
 .cue.active:hover { background: var(--highlight-hover); }
-.cue .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 11.5px; padding: 0 6px 0 0; font-variant-numeric: tabular-nums; }
+.cue .ts { grid-row: 1 / span 2; align-self: start; border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px/1.9 var(--font-mono); padding: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .cue .ts:hover { text-decoration: underline; }
 .cue .en { color: var(--text); font-size: 13px; }
 .cue .zh { color: var(--text-secondary); font-size: 12.5px; margin-top: 1px; }
@@ -152,11 +164,6 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .mode-switch button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .translate-hint { font-size: 11px; color: var(--text-muted); padding: 2px 12px 6px; }
 
-/* ---------- LLM 流式生成区 ---------- */
-.llm-stream { border: 1px solid var(--border); border-radius: 8px; margin: 8px 12px; background: var(--bg-subtle); }
-.llm-stream-head { display: block; font-size: 11px; color: var(--accent); padding: 5px 10px 2px; }
-.llm-stream pre { max-height: 180px; overflow-y: auto; margin: 0; padding: 2px 10px 8px; font: 11px/1.55 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
-
 /* ---------- 空态 / 错误 ---------- */
 .empty { color: var(--text-muted); padding: 28px 12px; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; font-size: 12.5px; }
 .empty.fetching { color: var(--text-muted); }
@@ -166,15 +173,15 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .notes { display: flex; flex-direction: column; }
 .notes-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 0 12px; }
 .notes-toolbar button { padding: 4px 12px; font-size: 12px; }
-.note { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
+.note { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--page-line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
 .note .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.note .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 11.5px; padding: 0; font-variant-numeric: tabular-nums; }
+.note .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px var(--font-mono); padding: 0; font-variant-numeric: tabular-nums; }
 .note .ts:hover { text-decoration: underline; }
 .note .tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
 .note .tag.value { background: var(--accent-soft); color: var(--accent); }
 .note .tag.confusion { background: var(--clip-medium-bg); color: var(--clip-medium-fg); }
-.note .annotation { font-size: 13px; color: var(--text); line-height: 1.6; }
-.note .excerpt { font-size: 12px; color: var(--text-secondary); margin-top: 6px; padding: 6px 10px; background: var(--bg-subtle); border-left: 3px solid var(--border-strong); border-radius: 0 6px 6px 0; }
+.note .annotation { font: 13.5px/1.75 var(--font-content); color: var(--text); }
+.note .excerpt { font: 12.5px/1.7 var(--font-content); color: var(--text-secondary); margin-top: 6px; padding: 6px 10px; background: var(--bg-subtle); border-left: 3px solid var(--border-strong); border-radius: 0 6px 6px 0; }
 .excerpt-zh { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
 .note .ai { font-size: 12px; color: var(--text-secondary); margin-top: 6px; padding: 8px 10px; background: var(--accent-soft); border-radius: 8px; line-height: 1.6; }
 .note .ops { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
@@ -190,7 +197,15 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .editor .meta { font-size: 11.5px; color: var(--text-muted); }
 .editor textarea { width: 100%; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-family: inherit; background: var(--card); color: var(--text); outline: none; resize: vertical; }
 .editor textarea:focus { border-color: var(--accent); }
+.editor .annotation-edit { font-family: var(--font-content); font-size: 13.5px; line-height: 1.75; }  /* 批注输入与展示同款衬线（手写感一致） */
 .editor .row .primary { flex: 1; padding: 7px; }
+
+/* ---------- 导出弹窗（§0.13：三选多选合并单文档） ---------- */
+.export-part { display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+.export-part input { margin: 3px 0 0; accent-color: var(--accent); }
+.export-part .pl { display: block; font-size: 13px; color: var(--text); }
+.export-part .pd { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.export-part.on { border-color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- AI 摘要 ---------- */
 .summary { display: flex; flex-direction: column; gap: 4px; }
@@ -213,7 +228,7 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .summary > section > h3 { font-size: 13px; color: var(--text); margin: 12px 0 6px; }
 .summary ul.quotes { list-style: none; margin: 0; padding: 0; }
 .quotes li { margin-bottom: 10px; }
-.quotes blockquote { margin: 3px 0 0; padding: 7px 12px; border-left: 3px solid var(--quote-bar); font-size: 12.5px; color: var(--text); background: var(--bg-subtle); border-radius: 0 8px 8px 0; line-height: 1.65; }
+.quotes blockquote { margin: 3px 0 0; padding: 7px 12px; border-left: 3px solid var(--quote-bar); font: 13px/1.8 var(--font-content); color: var(--text); background: var(--bg-subtle); border-radius: 0 8px 8px 0; }
 .quotes .q-ops { margin-top: 4px; display: flex; gap: 6px; }
 .quotes .q-copy { border: 0; background: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 0; }
 .quotes .q-copy:hover { color: var(--accent); }

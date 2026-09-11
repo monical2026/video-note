@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Video Note 设计方向对比（三选一）</title>
+<style>
+  /* 预览页自身的中性画布，与三种风格无关 */
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e8e8ec; font: 14px/1.6 system-ui, -apple-system, 'PingFang SC', sans-serif; color: #333; padding: 32px 24px 60px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .page-note { color: #777; font-size: 13px; margin-bottom: 28px; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1 1 360px; max-width: 420px; }
+  .col > .label { margin: 0 0 10px 2px; }
+  .col > .label b { font-size: 15px; }
+  .col > .label span { display: block; color: #777; font-size: 12.5px; margin-top: 2px; }
+  /* 模拟浏览器侧边栏的窄容器 */
+  .panel { height: 640px; overflow-y: auto; border-radius: 10px; }
+  .panel::-webkit-scrollbar { width: 8px; }
+  .panel::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 4px; }
+
+  /* ============================================================
+     风格一：学习手账 —— 衬线书摘感 + 纸质层次（amber 主题展示）
+     ============================================================ */
+  .s1 { background: #faf6ef; color: #3d3327; font: 13px/1.7 system-ui, 'PingFang SC', sans-serif; }
+  .s1 .tabs { display: flex; gap: 14px; padding: 9px 16px 0; border-bottom: 1px solid #e5ddcd; background: #faf6ef; position: sticky; top: 0; }
+  .s1 .tabs span { padding: 5px 2px 8px; font-size: 12.5px; color: #8f8271; border-bottom: 2px solid transparent; }
+  .s1 .tabs .on { color: #b4690e; border-bottom-color: #b4690e; font-weight: 600; }
+  .s1 .title { font: 600 15px/1.5 'Songti SC', 'STSong', 'Noto Serif SC', serif; padding: 12px 16px 2px; }
+  .s1 .search { margin: 10px 16px; padding: 5px 12px; border: 1px solid #e5ddcd; border-radius: 14px; font-size: 12px; color: #8f8271; background: #fffdf8; }
+  .s1 .cue { padding: 6px 16px; position: relative; }
+  .s1 .cue .ts { font-size: 11px; color: #b4690e; font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .s1 .cue .zh { color: #6f6353; font-size: 12.5px; }
+  .s1 .cue.active { background: #f7ecd4; }
+  .s1 .cue.active::before { content: ''; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 3px; background: #b4690e; border-radius: 2px; }
+  .s1 .mark { background: #b4690e; color: #fffdf8; border-radius: 2px; padding: 0 2px; }
+  .s1 .card { margin: 10px 16px; background: #fffdf8; border: 1px solid #e9e0cf; border-left: 3px solid #b4690e; border-radius: 6px; padding: 10px 14px; box-shadow: 0 1px 3px rgba(93,74,44,.08); }
+  .s1 .card .head { font-size: 11px; color: #8f8271; margin-bottom: 4px; }
+  .s1 .card .head .ts { color: #b4690e; }
+  .s1 .card .note { font: 14px/1.75 'Songti SC', 'STSong', 'Noto Serif SC', serif; color: #3d3327; }
+  .s1 .quote { margin: 10px 16px; }
+  .s1 .quote .head { font-size: 11px; color: #8f8271; margin-bottom: 3px; }
+  .s1 .quote blockquote { font: 14px/1.8 'Songti SC', 'STSong', 'Noto Serif SC', serif; color: #3d3327; padding: 2px 0 2px 14px; border-left: 2px solid #d6cbb4; }
+  .s1 .quote .copy { font-size: 11px; color: #8f8271; margin-top: 3px; }
+
+  /* ============================================================
+     风格二：精密仪表 —— 等宽数据感 + 高密度细线（浅色展示）
+     ============================================================ */
+  .s2 { background: #fcfcfd; color: #26292e; font: 12.5px/1.6 system-ui, 'PingFang SC', sans-serif; }
+  .s2 .tabs { display: flex; gap: 2px; padding: 8px 12px; border-bottom: 1px solid #e8e8ec; background: #fcfcfd; position: sticky; top: 0; }
+  .s2 .tabs span { font-size: 10.5px; letter-spacing: .08em; color: #9a9fa6; padding: 4px 9px; border-radius: 5px; text-transform: uppercase; }
+  .s2 .tabs .on { color: #26292e; background: #eeeef2; font-weight: 600; }
+  .s2 .title { padding: 10px 14px 2px; font-size: 13px; font-weight: 600; }
+  .s2 .search { margin: 8px 12px; padding: 4px 11px; border: 1px solid #e0e0e5; border-radius: 7px; font-size: 11.5px; color: #9a9fa6; }
+  .s2 .cue { display: flex; gap: 10px; padding: 5px 14px; border-bottom: 1px solid #f0f0f3; }
+  .s2 .cue .ts { flex: 0 0 40px; text-align: right; font: 11px/1.9 ui-monospace, 'SF Mono', Menlo, monospace; color: #6b7078; }
+  .s2 .cue .body { flex: 1; }
+  .s2 .cue .zh { color: #6b7078; font-size: 11.5px; }
+  .s2 .cue.active { background: #eef4fc; box-shadow: inset 2px 0 0 #3b6fd4; }
+  .s2 .mark { background: #3b6fd4; color: #fff; border-radius: 2px; padding: 0 2px; }
+  .s2 .card { margin: 8px 12px; border: 1px solid #e8e8ec; border-radius: 8px; padding: 9px 12px; background: #fff; }
+  .s2 .card .head { display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: .05em; color: #9a9fa6; margin-bottom: 4px; text-transform: uppercase; }
+  .s2 .card .head .ts { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: #3b6fd4; }
+  .s2 .card .note { font-size: 12.5px; color: #26292e; }
+  .s2 .quote { margin: 8px 12px; padding: 9px 12px; border: 1px solid #e8e8ec; border-radius: 8px; background: #fff; }
+  .s2 .quote .head { font-size: 10.5px; letter-spacing: .05em; color: #9a9fa6; margin-bottom: 3px; text-transform: uppercase; }
+  .s2 .quote blockquote { font-size: 12.5px; color: #26292e; }
+  .s2 .quote .copy { font-size: 10.5px; color: #9a9fa6; margin-top: 4px; }
+
+  /* ============================================================
+     风格三：YouTube 融合 —— 宿主语言：胶囊 tab + 圆角卡片（白底展示）
+     ============================================================ */
+  .s3 { background: #fff; color: #0f0f0f; font: 13px/1.65 Roboto, system-ui, 'PingFang SC', sans-serif; }
+  .s3 .tabs { display: flex; gap: 8px; padding: 10px 12px; background: #fff; position: sticky; top: 0; border-bottom: 1px solid #f0f0f0; }
+  .s3 .tabs span { padding: 5px 13px; border-radius: 16px; font-size: 12.5px; color: #606060; background: #f2f2f2; }
+  .s3 .tabs .on { background: #0f0f0f; color: #fff; font-weight: 500; }
+  .s3 .title { padding: 10px 16px 2px; font-size: 14px; font-weight: 600; }
+  .s3 .search { margin: 8px 14px; padding: 5px 14px; border: 1px solid #e5e5e5; border-radius: 18px; font-size: 12px; color: #909090; }
+  .s3 .cue { margin: 4px 10px; padding: 7px 10px; border-radius: 10px; }
+  .s3 .cue:hover { background: #f5f5f5; }
+  .s3 .cue .ts { color: #065fd4; font-size: 12px; margin-right: 8px; font-weight: 500; }
+  .s3 .cue .zh { color: #606060; font-size: 12.5px; }
+  .s3 .cue.active { background: #fef0f0; box-shadow: inset 3px 0 0 #f03; }
+  .s3 .mark { background: #065fd4; color: #fff; border-radius: 2px; padding: 0 2px; }
+  .s3 .card { margin: 8px 12px; border: 1px solid #e5e5e5; border-radius: 12px; padding: 11px 14px; }
+  .s3 .card .head { font-size: 12px; color: #606060; margin-bottom: 4px; }
+  .s3 .card .head .ts { color: #065fd4; font-weight: 500; }
+  .s3 .card .note { font-size: 13px; }
+  .s3 .quote { margin: 8px 12px; padding: 11px 14px; background: #f9f9f9; border-radius: 12px; }
+  .s3 .quote .head { font-size: 12px; color: #606060; margin-bottom: 3px; }
+  .s3 .quote blockquote { font-size: 13px; }
+  .s3 .quote .copy { font-size: 11.5px; color: #606060; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Video Note 设计方向对比</h1>
+<p class="page-note">同一份真实内容（逐字稿 / 笔记 / 金句）× 三种风格，容器宽度模拟浏览器侧边栏。选定方向后再套用到 light / dark / amber 三主题上。</p>
+
+<div class="row">
+  <!-- ========== 风格一 ========== -->
+  <div class="col">
+    <p class="label"><b>① 学习手账</b><span>标题/批注/金句用衬线字像书页摘录；纸感卡片 + 书页红条；时间戳像页边注。展示底色为「琥珀」主题。</span></p>
+    <div class="panel s1">
+      <div class="tabs"><span>逐字稿</span><span>笔记</span><span class="on">AI 摘要</span><span>📚</span><span>⚙️</span></div>
+      <div class="title">JavaScript 闭包详解 —— 十分钟彻底搞懂</div>
+      <div class="search">搜索中英文…</div>
+      <div class="cue"><span class="ts">03:12</span>So a closure is simply a function that remembers<span class="zh">闭包就是一个会记住外部变量的函数</span></div>
+      <div class="cue active"><span class="ts">03:20</span>the environment it was created in, even after<span class="zh">即便外层函数已经返回，它仍保留创建时的环境</span></div>
+      <div class="cue"><span class="ts">03:28</span>the outer function has finished executing.<span class="zh">这就是闭包的全部本质。</span></div>
+      <div class="card">
+        <div class="head">⭐ 我的笔记 · <span class="ts">03:20</span></div>
+        <div class="note">闭包像一只背包——函数出门时把创建时的变量打包带走，走到哪用到哪。</div>
+      </div>
+      <div class="quote">
+        <div class="head">💬 金句 · <span class="ts">03:20</span></div>
+        <blockquote>「A closure is a backpack: the function carries its environment with it.」</blockquote>
+        <div class="copy">复制</div>
+      </div>
+      <div class="card">
+        <div class="head">✂️ 切片价值：高 · <span class="ts">03:20–05:12</span></div>
+        <div class="note">「背包比喻」一节自成一体，适合单独剪出分享。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 风格二 ========== -->
+  <div class="col">
+    <p class="label"><b>② 精密仪表</b><span>等宽时间戳右对齐成列、行级细线分隔、大写间距字母 tab、高密度。冷静的工具感（Linear / Arc 系）。</span></p>
+    <div class="panel s2">
+      <div class="tabs"><span>Transcript</span><span>Notes</span><span class="on">Summary</span><span>Lib</span><span>Set</span></div>
+      <div class="title">JavaScript 闭包详解 —— 十分钟彻底搞懂</div>
+      <div class="search">搜索中英文…</div>
+      <div class="cue"><span class="ts">03:12</span><div class="body">So a closure is simply a function that remembers<div class="zh">闭包就是一个会记住外部变量的函数</div></div></div>
+      <div class="cue active"><span class="ts">03:20</span><div class="body">the environment it was created in, even after<div class="zh">即便外层函数已经返回，它仍保留创建时的环境</div></div></div>
+      <div class="cue"><span class="ts">03:28</span><div class="body">the outer function has finished executing.<div class="zh">这就是闭包的全部本质。</div></div></div>
+      <div class="card">
+        <div class="head"><span>Note · ⭐</span><span class="ts">03:20</span></div>
+        <div class="note">闭包像一只背包——函数出门时把创建时的变量打包带走，走到哪用到哪。</div>
+      </div>
+      <div class="quote">
+        <div class="head"><span>Quote · 💬</span></div>
+        <blockquote>「A closure is a backpack: the function carries its environment with it.」</blockquote>
+        <div class="copy">复制</div>
+      </div>
+      <div class="card">
+        <div class="head"><span>Clip · 高价值</span><span class="ts">03:20–05:12</span></div>
+        <div class="note">「背包比喻」一节自成一体，适合单独剪出分享。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 风格三 ========== -->
+  <div class="col">
+    <p class="label"><b>③ YouTube 融合</b><span>借宿主语言：胶囊 tab（选中黑底白字）、大圆角卡片、链接蓝 + 红色当前句条。插件视觉上像 YouTube 官方的一部分。</span></p>
+    <div class="panel s3">
+      <div class="tabs"><span>逐字稿</span><span>笔记</span><span class="on">AI 摘要</span><span>📚</span><span>⚙️</span></div>
+      <div class="title">JavaScript 闭包详解 —— 十分钟彻底搞懂</div>
+      <div class="search">搜索中英文…</div>
+      <div class="cue"><span class="ts">03:20</span>So a closure is simply a function that remembers<span class="zh">闭包就是一个会记住外部变量的函数</span></div>
+      <div class="cue active"><span class="ts">03:20</span>the environment it was created in, even after<span class="zh">即便外层函数已经返回，它仍保留创建时的环境</span></div>
+      <div class="cue"><span class="ts">03:28</span>the outer function has finished executing.<span class="zh">这就是闭包的全部本质。</span></div>
+      <div class="card">
+        <div class="head">⭐ 我的笔记 · <span class="ts">03:20</span></div>
+        <div class="note">闭包像一只背包——函数出门时把创建时的变量打包带走，走到哪用到哪。</div>
+      </div>
+      <div class="quote">
+        <div class="head">💬 金句 · <span class="ts">03:20</span></div>
+        <blockquote>「A closure is a backpack: the function carries its environment with it.」</blockquote>
+        <div class="copy">复制</div>
+      </div>
+      <div class="card">
+        <div class="head">✂️ 切片价值：高 · <span class="ts">03:20–05:12</span></div>
+        <div class="note">「背包比喻」一节自成一体，适合单独剪出分享。</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

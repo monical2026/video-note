@@ -13,7 +13,7 @@ export type Msg =
   | { type: 'SUMMARIZE'; videoId: string }
   | { type: 'SEEK'; t: number }
   | { type: 'PLAYBACK'; t: number }
-  | { type: 'EXPORT'; videoId: string; includeTranscript: boolean; notesOnly?: boolean }
+  | { type: 'EXPORT'; videoId: string; parts: Array<'notes' | 'summary' | 'transcript'> }  // 导出内容多选（§0.13）：任意组合合并单文档、分节标注
   | { type: 'GET_SETTINGS' }
   | { type: 'SAVE_SETTINGS'; patch: Partial<Settings> }
   | { type: 'CAPTURE_NOW' }

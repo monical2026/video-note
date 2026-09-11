@@ -1,7 +1,7 @@
 {
   "name": "video-note",
   "description": "看视频做笔记：逐字稿、中英对照、AI 摘要、融合导出",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "scripts": {

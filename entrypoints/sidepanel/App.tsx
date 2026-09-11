@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { activeTab, cues, currentTime, displayMode, loadVideoData, noteEditorCtx, notes, refreshSettings, sendMsg, settings, summary, transcriptError, videoInfo } from './state';
-import type { StreamInfo } from '../../src/services/llm-translate';
 import type { Theme } from '../../src/types';
 import { TranscriptView } from './TranscriptView';
 import { NotesView } from './NotesView';
@@ -8,6 +7,7 @@ import { SummaryView } from './SummaryView';
 import { LibraryView } from './LibraryView';
 import { SettingsView } from './SettingsView';
 import { NoteEditor } from './NoteEditor';
+import { ExportDialog } from './ExportDialog';
 
 const TABS = [
   ['transcript', '逐字稿'], ['notes', '笔记'], ['summary', 'AI 摘要'], ['library', '📚'], ['settings', '⚙️'],
@@ -15,18 +15,16 @@ const TABS = [
 
 export function App() {
   const [translating, setTranslating] = useState(false);
-  const [resegmenting, setResegmenting] = useState<'rules' | 'ai' | null>(null);
   const [translateError, setTranslateError] = useState('');
-  const [stream, setStream] = useState<StreamInfo | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [fetchTimedOut, setFetchTimedOut] = useState(false);
-  const streamBoxRef = useRef<HTMLPreElement>(null);
   const autoTranslatedFor = useRef(''); // 已自动翻译过的 videoId，防止重复触发
   const tabRestored = useRef(false);    // 上次 Tab 恢复完成前禁止回写（防读写竞争覆盖）
   const lastWorkTab = useRef<typeof activeTab.value>('transcript'); // 进入设置页前的工作 Tab（保存后跳回）
 
   const triggerTranslate = async (videoId: string, force = false) => {
     if (!videoId || translating) return;
-    setTranslating(true); setTranslateError(''); setStream(null);
+    setTranslating(true); setTranslateError('');
     if (force) {
       // 全量重翻：先把界面里的旧译文清掉，进度显示才真实（库里由 force 语义重写）
       cues.value = cues.value.map((c) => ({ ...c, zh: undefined }));
@@ -37,7 +35,7 @@ export function App() {
     } catch (e) {
       // 失败必须可见（此前静默吞掉，用户只见"没反应"）
       setTranslateError(e instanceof Error ? e.message : String(e));
-    } finally { setTranslating(false); setStream(null); }
+    } finally { setTranslating(false); }
   };
 
   /**
@@ -80,15 +78,14 @@ export function App() {
       if (msg.type === 'PLAYBACK') currentTime.value = msg.t;
       if (msg.type === 'OPEN_NOTE_EDITOR') noteEditorCtx.value = msg;
       if (msg.type === 'TRANSCRIPT_FAILED') transcriptError.value = msg.reason;
-      if (msg.type === 'LLM_STREAM') setStream(msg as StreamInfo);
       // SPA 导航瞬间通知（content 经 background 转发）：立即切换——亮新标题+加载态，已抓过的库读秒切
       if (msg.type === 'VIDEO_CHANGED' && !sender?.tab) {
-        transcriptError.value = ''; setStream(null);
+        transcriptError.value = '';
         if (msg.meta.videoId !== videoInfo.value?.videoId) handleVideoSwitch(msg.meta);
       }
       // 仅接受 background 处理完成后的广播（sender 无 tab）；忽略 content script 发来的原始未处理消息
       if (msg.type === 'PAGE_INFO' && !sender?.tab) {
-        transcriptError.value = ''; setStream(null); loadVideoData(msg.meta.videoId);
+        transcriptError.value = ''; loadVideoData(msg.meta.videoId);
       }
     };
     browser.runtime.onMessage.addListener(listener);
@@ -124,12 +121,6 @@ export function App() {
     return () => clearTimeout(t);
   }, [cuesLen, curVideoId0]);
 
-  // 流式文本自动滚到底（跟随生成）
-  useEffect(() => {
-    const el = streamBoxRef.current;
-    if (el && typeof el.scrollTo === 'function') el.scrollTo(0, el.scrollHeight);
-  }, [stream?.text]);
-
   // 免费通道自动翻译：cues 非空且全部无译文时，每个视频自动触发一次
   const pendingCount = cues.value.filter((c) => !c.zh).length;
   const total = cues.value.length;
@@ -158,29 +149,6 @@ export function App() {
       triggerTranslate(currentVideoId);
     }
   }, [currentVideoId, pendingCount, translating, settings.value]);
-
-  /** 重新分段：从库存的原始碎行重新拼段（规则=零费用 / AI=大模型断点）；文字一字不动，译文失配清空待重翻 */
-  const resegment = async (mode: 'rules' | 'ai') => {
-    if (!currentVideoId || translating || resegmenting) return;
-    setResegmenting(mode); setTranslateError(''); setStream(null);
-    try {
-      await sendMsg({ type: 'RESEGMENT', videoId: currentVideoId, mode });
-      await loadVideoData(currentVideoId);
-    } catch (e) {
-      setTranslateError(e instanceof Error ? e.message : String(e));
-    } finally { setResegmenting(null); setStream(null); }
-  };
-
-  /** 重抓字幕：清除该视频库存稿（旧润色版/译文/术语表），重新走抓取→拼段新链路；笔记与摘要保留 */
-  const refetchTranscript = async () => {
-    if (!currentVideoId || translating) return;
-    setTranslateError(''); setStream(null);
-    try {
-      await sendMsg({ type: 'DELETE_TRANSCRIPT', videoId: currentVideoId });
-      cues.value = [];  // 清本地：触发「正在获取字幕…」态，等 PAGE_INFO 广播刷新
-      sendMsg({ type: 'RETRY_TRANSCRIPT' });
-    } catch (e) { setTranslateError(e instanceof Error ? e.message : String(e)); }
-  };
 
   // 无字幕视频的笔记入口：以当前播放位置为窗口打开编辑器（excerpt 为空合法）
   const noteHere = () => {
@@ -219,34 +187,20 @@ export function App() {
         {tab === 'transcript' && (
           <>
           <div class="translate-bar">
+            {/* §0.13：免费通道自动翻译，手动入口仅留 LLM 翻译；导出按钮与此并列 */}
             <span>{translating ? `翻译中… 已翻 ${done}/${total}` : `未翻译句数 ${pendingCount}`}</span>
-            <button disabled={!currentVideoId || translating || !pendingCount} onClick={() => triggerTranslate(currentVideoId)}>
-              {translating ? '翻译中…' : '翻译'}
-            </button>
             {settings.value?.llm && (
-              <button data-testid="retranslate-llm" disabled={!currentVideoId || translating || !cues.value.length}
+              <button data-testid="llm-translate" disabled={!currentVideoId || translating || !cues.value.length}
                 onClick={() => triggerTranslate(currentVideoId, true)}>
-                用 LLM 重翻
+                LLM 翻译
               </button>
             )}
-            <button data-testid="refetch-transcript" disabled={!currentVideoId || translating || !cues.value.length}
-              title="清除本视频已存字幕稿（旧润色版/译文），重新抓取并按新方式拼段；笔记不受影响"
-              onClick={refetchTranscript}>
-              重抓字幕
-            </button>
-            <button data-testid="resegment-rules" disabled={!currentVideoId || translating || !!resegmenting || !cues.value.length}
-              title="按两层规则（分句→组段）从原始碎行重新拼段：零费用、即时；文字一字不动，译文需重翻"
-              onClick={() => resegment('rules')}>
-              {resegmenting === 'rules' ? '分段中…' : '规则分段'}
+            <button data-testid="open-export" disabled={!currentVideoId}
+              onClick={() => setExportOpen(true)}>
+              导出
             </button>
           </div>
           {translateError && <div class="err"><span>翻译失败：{translateError}</span></div>}
-          {stream && (
-            <div class="llm-stream" data-testid="llm-stream">
-              <span class="llm-stream-head">翻译中 · 第 {stream.batch}/{stream.batchTotal} 批</span>
-              <pre ref={streamBoxRef}>{stream.text}</pre>
-            </div>
-          )}
           {settings.value?.translateChannel === 'free' && !settings.value.llm && (
             <div class="translate-hint">免费通道逐句翻译较慢、术语有限。配置 LLM key 可大幅提速提质 → ⚙️</div>
           )}
@@ -291,6 +245,7 @@ export function App() {
         />}
       </main>
       {noteEditorCtx.value && <NoteEditor key={`${noteEditorCtx.value.start}-${noteEditorCtx.value.end}`} />}
+      {exportOpen && currentVideoId && <ExportDialog videoId={currentVideoId} onClose={() => setExportOpen(false)} />}
     </div>
   );
 }

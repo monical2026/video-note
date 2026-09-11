@@ -6,7 +6,7 @@ import { googleFreeTranslate, runBatchTranslation } from '../src/services/transl
 import { aiSegmentBreakpoints, extractTerms, llmTranslateBatch } from '../src/services/llm-translate';
 import { mergeCues, sentencesFromCues, sentencesToParagraphs } from '../src/services/segment';
 import { explainConfusion, summarize } from '../src/services/ai';
-import { buildFusedMarkdown } from '../src/services/export';
+import { buildExportMarkdown } from '../src/services/export';
 import { handleMessage, type RouterDeps } from '../src/messaging/router';
 import type { Msg } from '../src/messaging/protocol';
 import type { Cue } from '../src/types';
@@ -29,7 +29,7 @@ export default defineBackground(() => {
     getTranscriptWithFallback: getTranscriptBound,
     googleFreeTranslate, runBatchTranslation, llmTranslateBatch, extractTerms,
     mergeCues, sentencesFromCues, sentencesToParagraphs, aiSegmentBreakpoints,
-    explainConfusion, summarize, buildFusedMarkdown,
+    explainConfusion, summarize, buildExportMarkdown,
     broadcast: (msg) => { browser.runtime.sendMessage(msg).catch(() => {}); },
     sendToActiveTab: (msg) => { browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => tab && browser.tabs.sendMessage(tab.id!, msg)).catch(() => {}); },
   };

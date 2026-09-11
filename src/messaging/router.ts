@@ -42,7 +42,7 @@ export interface RouterDeps {
   aiSegmentBreakpoints(config: any, sentences: { text: string }[], onStream?: OnStream): Promise<number[]>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
-  buildFusedMarkdown(input: any): string;
+  buildExportMarkdown(input: any): string;
   listVideosWithNotes(): Promise<{ video: VideoMeta; noteCount: number; lastAt: number }[]>;
   broadcast(msg: Msg): void;          // 面板广播（PLAYBACK/OPEN_NOTE_EDITOR 等）
   sendToActiveTab(msg: Msg): void;    // content script 定向
@@ -143,8 +143,8 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
       const [video, cues, notes, summary] = await Promise.all([
         deps.getVideo(msg.videoId), deps.getTranscript(msg.videoId), deps.getNotesByVideo(msg.videoId), deps.getSummary(msg.videoId),
       ]);
-      console.info('[video-note] export', `cues=${cues?.length ?? 0} (videoId=${msg.videoId})`);
-      return { markdown: deps.buildFusedMarkdown({ video, notes: notes as Note[], summary: msg.notesOnly ? undefined : summary, transcript: cues, includeTranscript: msg.includeTranscript }) };
+      console.info('[video-note] export', `parts=[${msg.parts.join(',')}] cues=${cues?.length ?? 0} (videoId=${msg.videoId})`);
+      return { markdown: deps.buildExportMarkdown({ video, notes: notes as Note[], summary, transcript: cues, parts: msg.parts }) };
     }
     case 'LIST_LIBRARY': return { rows: await deps.listVideosWithNotes() };
     case 'GET_SETTINGS': return await deps.getSettings();

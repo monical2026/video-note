@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as db from '../storage/db';
 import { mergeCues, sentencesFromCues, sentencesToParagraphs } from '../services/segment';
-import { buildFusedMarkdown } from '../services/export';
+import { buildExportMarkdown } from '../services/export';
 import { handleMessage } from './router';
 import type { Cue } from '../types';
 
@@ -45,7 +45,7 @@ const makeDeps = () => ({
   extractTerms: vi.fn(async () => []),
   explainConfusion: vi.fn(async () => ''),
   summarize: vi.fn(async () => ({ videoId: 'v', oneLiner: '', sections: [], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 })),
-  buildFusedMarkdown,
+  buildExportMarkdown,
   listVideosWithNotes: vi.fn(async () => []),
   broadcast: vi.fn(), sendToActiveTab: vi.fn(),
 });
@@ -84,7 +84,7 @@ describe('RESEGMENT→TRANSLATE→EXPORT 全链段数一致性', () => {
     expect(gd.cues.length).toBe(n);
 
     // 4. 导出（含逐字稿附录）
-    const ex = await handleMessage({ type: 'EXPORT', videoId: 'vid1', includeTranscript: true }, d as any);
+    const ex = await handleMessage({ type: 'EXPORT', videoId: 'vid1', parts: ['notes', 'summary', 'transcript'] }, d as any);
     const tsLines = (ex.markdown as string).split('\n').filter((l) => /^- \[\d{2}:\d{2}/.test(l));
     expect(tsLines.length).toBe(n);                      // 附录段数 = 库段数
 

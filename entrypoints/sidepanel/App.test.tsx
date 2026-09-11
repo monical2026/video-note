@@ -110,14 +110,14 @@ describe('视频切换跟随（2026-09 用户需求）', () => {
   });
 });
 
-describe('LLM 重翻按钮', () => {
-  it('配置 LLM 后显示；点击「用 LLM 重翻」发送 force', async () => {
+describe('LLM 翻译按钮（§0.13 更名，手动入口仅此一个）', () => {
+  it('配置 LLM 后显示；点击「LLM 翻译」发送 force', async () => {
     settings.llm = { baseUrl: 'http://x/v1', apiKey: 'k', model: 'm' };
     stubBrowser();
-    const { getByTestId, queryByTestId, findByText } = render(<App />);
+    const { getByTestId, findByText } = render(<App />);
     await findByText('hello');
-    expect(getByTestId('retranslate-llm')).toBeTruthy();
-    fireEvent.click(getByTestId('retranslate-llm'));
+    expect(getByTestId('llm-translate')).toBeTruthy();
+    fireEvent.click(getByTestId('llm-translate'));
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'TRANSLATE', videoId: 'vid123', force: true });
     settings.llm = null;
   });
@@ -126,59 +126,75 @@ describe('LLM 重翻按钮', () => {
     stubBrowser();
     const { queryByTestId, findByText } = render(<App />);
     await findByText('hello');
-    expect(queryByTestId('retranslate-llm')).toBeNull();
+    expect(queryByTestId('llm-translate')).toBeNull();
     expect(queryByTestId('repolish')).toBeNull();
     expect(document.body.textContent).not.toContain('重新润色');
   });
 });
 
-describe('重抓字幕 / 重新分段', () => {
-  it('点击后清除库存并触发重新抓取（DELETE_TRANSCRIPT + RETRY_TRANSCRIPT）', async () => {
-    stubBrowser();
+describe('导出入口（§0.13：按钮在逐字稿页工具栏，弹窗多选导出）', () => {
+  // jsdom 未实现 URL.createObjectURL（导出下载用），stub 掉只验证消息参数
+  const stubDownload = () => {
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:mock'), revokeObjectURL: vi.fn() });
+  };
+
+  it('点击「导出」弹出弹窗；默认勾选笔记+摘要，确认后发送 parts', async () => {
+    stubBrowser(); stubDownload();
     const { getByTestId, findByText } = render(<App />);
     await findByText('hello');
-    fireEvent.click(getByTestId('refetch-transcript'));
-    await waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'DELETE_TRANSCRIPT', videoId: 'vid123' }));
-    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RETRY_TRANSCRIPT' });
+    fireEvent.click(getByTestId('open-export'));
+    expect(getByTestId('export-dialog')).toBeTruthy();          // 弹窗出现
+    expect(getByTestId('export-notes')).toBeTruthy();
+    expect(getByTestId('export-summary')).toBeTruthy();
+    expect(getByTestId('export-transcript')).toBeTruthy();
+    fireEvent.click(getByTestId('export-confirm'));
+    await waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'EXPORT', videoId: 'vid123', parts: ['notes', 'summary'],
+    }));
   });
 
-  it('「规则分段」按钮：点击发送 RESEGMENT；AI 分段入口已移除（用户要求聚焦规则逐步调优）', async () => {
-    stubBrowser();
-    const { getByTestId, queryByTestId, findByText } = render(<App />);
+  it('重新勾选：全不选时导出禁用；只勾逐字稿则 parts 仅含 transcript', async () => {
+    stubBrowser(); stubDownload();
+    const { getByTestId, findByText } = render(<App />);
     await findByText('hello');
-    expect(queryByTestId('resegment-ai')).toBeNull();   // AI 分段按钮不渲染（无论是否配置 LLM）
-    fireEvent.click(getByTestId('resegment-rules'));
-    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ type: 'RESEGMENT', videoId: 'vid123', mode: 'rules' });
+    fireEvent.click(getByTestId('open-export'));
+    fireEvent.click(getByTestId('export-notes'));       // 取消默认勾选的笔记
+    fireEvent.click(getByTestId('export-summary'));     // 取消默认勾选的摘要
+    expect((getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(true);   // 全不选禁用
+    fireEvent.click(getByTestId('export-transcript'));  // 只勾逐字稿
+    fireEvent.click(getByTestId('export-confirm'));
+    await waitFor(() => expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'EXPORT', videoId: 'vid123', parts: ['transcript'],
+    }));
   });
 });
 
 describe('LLM 流式显示 / Tab 记忆', () => {
-  it('收到 LLM_STREAM 广播显示批号与逐字文本', async () => {
+  it('LLM_STREAM 流式显示已移除（§0.13 用户要求：翻译时不弹流式框，进度看工具栏文字）', async () => {
     stubBrowser();
-    const { findByText, findByTestId } = render(<App />);
+    const { findByText, queryByTestId } = render(<App />);
     await findByText('hello');
-    // 模拟 background 广播（listener 由 App 注册到 onMessage）
     const cb = (browser.runtime.onMessage.addListener as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (m: any, s: any) => void;
     cb({ type: 'LLM_STREAM', batch: 2, batchTotal: 5, text: '2. 闭包可以捕获状态' }, null);
-    const box = await findByTestId('llm-stream');
-    expect(box.textContent).toContain('翻译中');
-    expect(box.textContent).toContain('2/5');
-    expect(box.textContent).toContain('2. 闭包可以捕获状态');
+    expect(queryByTestId('llm-stream')).toBeNull();
   });
 
-  it('翻译失败显示错误条（不再静默）', async () => {
+  it('LLM 翻译失败显示错误条（不再静默）', async () => {
+    settings.llm = { baseUrl: 'http://x/v1', apiKey: 'k', model: 'm' };
     stubBrowser();
+    const baseSend = (browser as any).runtime.sendMessage;   // 先存原始 mock 再引用——修复此前 mock 自引用的无限递归（基线 2 个 unhandled rejection）
     vi.stubGlobal('browser', {
       ...(browser as any),
       runtime: {
         ...(browser as any).runtime,
-        sendMessage: vi.fn(async (msg: any) => (msg.type === 'TRANSLATE' ? { error: 'LLM 429: 余额不足' } : (browser as any).runtime.sendMessage(msg))),
+        sendMessage: vi.fn(async (msg: any) => (msg.type === 'TRANSLATE' ? { error: 'LLM 429: 余额不足' } : baseSend(msg))),
       },
     });
     const { findByText } = render(<App />);
     await findByText('hello');
-    fireEvent.click(document.querySelector('.translate-bar button')!);
+    fireEvent.click(document.querySelector('.translate-bar button')!);   // 已配 LLM：工具栏第一个按钮即「LLM 翻译」
     await waitFor(() => expect(document.body.textContent).toContain('翻译失败：LLM 429: 余额不足'));
+    settings.llm = null;
   });
 
   it('记住上次的 Tab：预存 settings 后启动恢复', async () => {
