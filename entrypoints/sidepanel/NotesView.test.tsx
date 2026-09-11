@@ -75,6 +75,15 @@ describe('excerptZh', () => {
   });
 });
 
+it('复制失败时按钮显示「复制失败 ✗」（与 SummaryView 同款反馈）', async () => {
+  const writeText = vi.fn(async () => { throw new Error('Document is not focused'); });
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  vi.stubGlobal('browser', { runtime: { sendMessage: vi.fn(async () => ({})) } });
+  const { getByText, findByText } = render(<NotesView notes={notes} videoId="v" currentVideoId="v" />);
+  fireEvent.click(getByText('复制'));
+  expect(await findByText('复制失败 ✗')).toBeTruthy();
+});
+
 describe('编辑入口（§0.14）', () => {
   it('点「编辑」打开编辑器并携带原笔记（预填+保留 id）', () => {
     vi.stubGlobal('browser', { runtime: { sendMessage: vi.fn(async () => ({})) } });

@@ -23,9 +23,19 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
     }).catch(() => setShortcut('Alt+N'));
   }, []);
   const [copiedId, setCopiedId] = useState('');
+  const [copyFailId, setCopyFailId] = useState('');
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
   const copy = async (n: Note) => {
-    await navigator.clipboard.writeText(noteMarkdown(n));
-    setCopiedId(n.id); setTimeout(() => setCopiedId(''), 1500);
+    try {
+      await navigator.clipboard.writeText(noteMarkdown(n));
+      setCopiedId(n.id); setCopyFailId('');
+    } catch {
+      // 剪贴板失败（如面板失焦）必须可见，与 SummaryView 同款反馈（§0.14 遗留项清偿）
+      setCopyFailId(n.id); setCopiedId('');
+    }
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => { setCopiedId(''); setCopyFailId(''); }, 1500);
   };
   const jump = (n: Note) => {
     if (n.videoId === props.currentVideoId) sendMsg({ type: 'SEEK', t: n.start });
@@ -96,7 +106,7 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
           {n.aiExplanation && <div class="ai">🤖 {n.aiExplanation}</div>}
           <div class="ops">
             <button onClick={() => { noteEditorCtx.value = { start: n.start, end: n.end, excerpt: n.excerpt, note: n }; }}>编辑</button>
-            <button onClick={() => copy(n)}>{copiedId === n.id ? '已复制' : '复制'}</button>
+            <button onClick={() => copy(n)}>{copiedId === n.id ? '已复制' : copyFailId === n.id ? '复制失败 ✗' : '复制'}</button>
             <button onClick={() => jump(n)}>跳转</button>
             <button class={confirmDeleteId === n.id ? 'danger' : ''} onClick={() => onDelete(n)}>
               {confirmDeleteId === n.id ? '确认删除？' : '删除'}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { aiSegmentBreakpoints, extractTerms, llmTranslateBatch, type StreamInfo } from './llm-translate';
+import { extractTerms, llmTranslateBatch, type StreamInfo } from './llm-translate';
 
 afterEach(() => vi.unstubAllGlobals());
 const cfg = { baseUrl: 'https://x/v1', apiKey: 'k', model: 'm' };
@@ -94,46 +94,3 @@ describe('术语表提取 extractTerms', () => {
   });
 });
 
-describe('AI 分段断点 aiSegmentBreakpoints', () => {
-  const sents = Array.from({ length: 5 }, (_, i) => ({ text: `sentence ${i + 1}` }));
-
-  it('解析断点数字，排序去重，越界忽略', async () => {
-    stubStream('3\n7\n3\n99');   // 重复 3、越界 99
-    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([3]);
-  });
-
-  it('解析容错：逗号/空格分隔或夹带说明文字的数字也能提取（根因：整行纯数字解析出 0 断点退回规则）', async () => {
-    // 用户实测「AI 分段与规则一模一样」的根因复现：模型输出逗号分隔
-    stubStream('2, 4, 5');
-    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([2, 4, 5]);
-    stubStream('Break after sentence 2 and 4.');
-    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([2, 4]);
-  });
-
-  it('prompt 含分段标准与"只输出数字"约束', async () => {
-    const f = stubStream('2');
-    await aiSegmentBreakpoints(cfg, sents);
-    const body = JSON.parse((f.mock.calls[0] as any[])[1]!.body as string);
-    const system = body.messages.find((m: any) => m.role === 'system')!.content as string;
-    expect(system).toContain('2~5 句话');
-    expect(system).toContain('绝不可切断');
-    expect(system).toContain('不要输出数字以外的任何内容');
-    expect(body.messages[1]!.content).toContain('1. sentence 1');   // 带全局编号的句子输入
-  });
-
-  it('无效输出（无数字行）→ 空数组（调用方退回规则组段）', async () => {
-    stubStream('I think these all belong together.');
-    expect(await aiSegmentBreakpoints(cfg, sents)).toEqual([]);
-  });
-
-  it('超批大小分批调用（80 句/批），全局句号解析', async () => {
-    const payloads = ['80', '95'];   // 第二批覆盖全局句 81~100，断点 95 合法
-    let call = 0;
-    const f = vi.fn(async () => ({ ok: true, body: sse(payloads[call++]!) }) as any);
-    vi.stubGlobal('fetch', f);
-    const many = Array.from({ length: 100 }, () => ({ text: 's' }));
-    const bps = await aiSegmentBreakpoints(cfg, many);
-    expect(f).toHaveBeenCalledTimes(2);
-    expect(bps).toEqual([80, 95]);
-  });
-});

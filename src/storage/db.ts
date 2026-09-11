@@ -46,7 +46,6 @@ export const getTranscript = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v)?.cues);
 export const getTranscriptRecord = (videoId: string) =>
   db().then((d) => d.get('transcripts', videoId)).then((v) => normalize(v));
-export const deleteTranscript = (videoId: string) => db().then((d) => d.delete('transcripts', videoId));
 
 /** 清空全部视频数据（videos/transcripts/notes/summaries 四 store）——设置存于 chrome.storage 不受影响 */
 export async function clearAllVideoData(): Promise<number> {

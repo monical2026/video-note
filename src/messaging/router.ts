@@ -27,7 +27,6 @@ export interface RouterDeps {
   deleteNote(id: string): Promise<unknown>;
   getSummary(videoId: string): Promise<Summary | undefined>;
   saveSummary(s: Summary): Promise<unknown>;
-  deleteTranscript(videoId: string): Promise<unknown>;
   clearAllVideoData(): Promise<number>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<void>;
@@ -37,9 +36,6 @@ export interface RouterDeps {
   llmTranslateBatch(config: any, texts: string[], terms?: Term[], onStream?: OnStream): Promise<string[]>;
   extractTerms(config: any, cues: Cue[]): Promise<Term[]>;
   mergeCues(cues: Cue[]): Cue[];   // 规则分段全流程（层1分句+层2组段）
-  sentencesFromCues(cues: Cue[]): Sentence[];
-  sentencesToParagraphs(sentences: Sentence[], breakpoints?: number[]): Cue[];
-  aiSegmentBreakpoints(config: any, sentences: { text: string }[], onStream?: OnStream): Promise<number[]>;
   explainConfusion(config: any, cues: Cue[]): Promise<string>;
   summarize(config: any, video: any, cues: Cue[]): Promise<Summary>;
   buildExportMarkdown(input: any): string;
@@ -156,36 +152,7 @@ export async function handleMessage(msg: Msg, deps: RouterDeps): Promise<any> {
     // SPA 导航瞬间通知：转发面板立即切换（字幕抓取前先亮标题+加载态；已抓过的视频库读秒切）
     case 'VIDEO_CHANGED': deps.broadcast(msg); return { ok: true };
     case 'OPEN_NOTE_EDITOR': return { ok: true };
-    case 'DELETE_TRANSCRIPT': await deps.deleteTranscript(msg.videoId); return { ok: true };
     case 'CLEAR_ALL_DATA': await deps.clearAllVideoData(); return { ok: true };
-    case 'RESEGMENT': {
-      const record = await deps.getTranscriptRecord(msg.videoId);
-      const raw = record?.raw;
-      if (!raw?.length) throw new Error('无原始碎行（旧库存视频请先「重抓字幕」补充原料）');
-      let final: Cue[];
-      if (msg.mode === 'ai') {
-        const s = await deps.getSettings();
-        if (!s.llm) throw new Error('AI 分段需要先配置 LLM');
-        const sentences = deps.sentencesFromCues(raw);
-        const bps = await deps.aiSegmentBreakpoints(s.llm, sentences, makeStreamBroadcaster(deps.broadcast));
-        // 诊断日志（不含 key/全文）：断点为 0 说明模型输出未解析到 → 已退回规则组段
-        console.info('[video-note] segment', `ai breakpoints=${bps.length}/${sentences.length} sentences${bps.length ? '' : ' (fallback to rules)'}`);
-        final = deps.sentencesToParagraphs(sentences, bps.length ? bps : undefined);
-      } else {
-        final = deps.mergeCues(raw);
-        // 诊断日志（不含 key/全文）：原料条数 vs 产出段数——段数≈条数说明预切/分句没生效
-        console.info('[video-note] segment', `rules raw=${raw.length} cues -> ${final.length} paras, avg ${Math.round(final.reduce((n, c) => n + c.text.length, 0) / Math.max(1, final.length))} chars`);
-        const mv = raw.filter((c) => /music|laughter|applause|cheering|>>/i.test(c.text)).slice(0, 6).map((c) => c.text);
-        console.info('[video-note] segment', `nonverbal/speaker raw: ${JSON.stringify(mv)}`);
-        console.info('[video-note] segment', `raw head: ${JSON.stringify(raw.slice(0, 6).map((c) => ({ s: c.start, t: c.text })))}`);
-      }
-      // 文字一字不动：术语表仍适用故保留；新段与旧译文失配 → 落库即清空待重翻；raw 保留
-      await deps.saveTranscript(msg.videoId, final, record?.terms, record?.polishedAt, raw);
-      // 写后回读验证（2026-09-02 排障）：区分"写入失败"（回读旧值/空）与"读取端问题"（回读新值但界面/导出仍旧）
-      const verify = await deps.getTranscriptRecord(msg.videoId);
-      console.info('[video-note] segment', `saved ${final.length}, reread ${verify?.cues?.length ?? 'undefined'} (videoId=${msg.videoId})`);
-      return { ok: true, cueCount: final.length };
-    }
     case 'RETRY_TRANSCRIPT': deps.sendToActiveTab(msg); return { ok: true };
     default: throw new Error(`未知消息: ${(msg as any).type}`);
   }
