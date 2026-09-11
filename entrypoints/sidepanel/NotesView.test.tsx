@@ -10,6 +10,7 @@ vi.mock('./state', async (importOriginal) => {
 });
 
 import { NotesView } from './NotesView';
+import { noteEditorCtx } from './state';
 import type { Note } from '../../src/types';
 
 const notes: Note[] = [
@@ -71,6 +72,26 @@ describe('excerptZh', () => {
   it('noteMarkdown 在摘录行后输出中文行，无 excerptZh 跳过', () => {
     expect(noteMarkdown(noteZh)).toContain('「closures capture」\n闭包捕获');
     expect(noteMarkdown({ ...noteZh, excerptZh: undefined })).not.toContain('闭包捕获');
+  });
+});
+
+describe('编辑入口（§0.14）', () => {
+  it('点「编辑」打开编辑器并携带原笔记（预填+保留 id）', () => {
+    vi.stubGlobal('browser', { runtime: { sendMessage: vi.fn(async () => ({})) } });
+    noteEditorCtx.value = null;
+    const { getByText } = render(<NotesView notes={notes} videoId="v" currentVideoId="v" />);
+    fireEvent.click(getByText('编辑'));
+    expect(noteEditorCtx.value).toMatchObject({ start: 95, end: 100, excerpt: 'closures capture', note: notes[0] });
+    noteEditorCtx.value = null;
+  });
+
+  it('空态文案显示实际快捷键绑定而非写死值', () => {
+    vi.stubGlobal('browser', {
+      runtime: { sendMessage: vi.fn(async () => ({})) },
+      commands: { getAll: vi.fn(async () => [{ name: 'capture-note', shortcut: '⌥N' }]) },
+    });
+    const { findByText } = render(<NotesView notes={[]} videoId="v" currentVideoId="v" />);
+    return findByText((_, el) => !!el?.textContent?.includes('按 ⌥N') && el.className === 'empty');
   });
 });
 

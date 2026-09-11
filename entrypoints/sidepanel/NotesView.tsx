@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'preact/hooks';
 import type { Note } from '../../src/types';
 import { formatTime, mdTimestampLink, tsLink } from '../../src/utils/time';
-import { sendMsg, loadVideoData } from './state';
+import { noteEditorCtx, sendMsg, loadVideoData } from './state';
 
 /** 单条笔记复制格式（与融合导出一致） */
 export function noteMarkdown(n: Note): string {
@@ -14,6 +14,14 @@ export function noteMarkdown(n: Note): string {
 }
 
 export function NotesView(props: { notes: Note[]; videoId: string; currentVideoId: string; onNotesChanged?: () => void; onNoteHere?: () => void }) {
+  // 截取笔记快捷键的实际绑定：Chrome 更新后不自动应用新默认键，写死文案会与用户真实设置不符（§0.14）
+  const [shortcut, setShortcut] = useState('Alt+N');
+  useEffect(() => {
+    // Promise.resolve 包裹：环境无 commands API（如测试 stub）时统一回落默认值而非抛错
+    Promise.resolve((browser as any).commands?.getAll?.()).then((cmds: any[]) => {
+      setShortcut(cmds?.find((c: any) => c.name === 'capture-note')?.shortcut || 'Alt+N');
+    }).catch(() => setShortcut('Alt+N'));
+  }, []);
   const [copiedId, setCopiedId] = useState('');
   const copy = async (n: Note) => {
     await navigator.clipboard.writeText(noteMarkdown(n));
@@ -70,7 +78,7 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
   if (!props.notes.length) return (
     <div class="notes">
       {toolbar}
-      <div class="empty">本视频还没有笔记——点上方 📝 记笔记、按 Ctrl+Shift+L，或在逐字稿上划选</div>
+      <div class="empty">本视频还没有笔记——点上方 📝 记笔记、按 {shortcut}，或在逐字稿上划选</div>
     </div>
   );
   return (
@@ -78,13 +86,16 @@ export function NotesView(props: { notes: Note[]; videoId: string; currentVideoI
       {toolbar}
       {props.notes.map((n) => (
         <div key={n.id} class="note">
-          <button class="ts" onClick={() => jump(n)}>{formatTime(n.start)}</button>
-          <span class={`tag ${n.type}`}>{n.type === 'value' ? '⭐' : '❓'}</span>
+          <div class="head">
+            <span class="head-label">{n.type === 'value' ? 'NOTE · ⭐' : 'CONFUSION · ❓'}</span>
+            <button class="ts" onClick={() => jump(n)}>{formatTime(n.start)}</button>
+          </div>
           <div class="annotation">{n.annotation}</div>
           {n.excerpt && <div class="excerpt">「{n.excerpt}」</div>}
           {n.excerptZh && <div class="excerpt-zh">{n.excerptZh}</div>}
           {n.aiExplanation && <div class="ai">🤖 {n.aiExplanation}</div>}
           <div class="ops">
+            <button onClick={() => { noteEditorCtx.value = { start: n.start, end: n.end, excerpt: n.excerpt, note: n }; }}>编辑</button>
             <button onClick={() => copy(n)}>{copiedId === n.id ? '已复制' : '复制'}</button>
             <button onClick={() => jump(n)}>跳转</button>
             <button class={confirmDeleteId === n.id ? 'danger' : ''} onClick={() => onDelete(n)}>

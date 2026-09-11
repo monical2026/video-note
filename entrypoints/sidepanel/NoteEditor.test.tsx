@@ -49,3 +49,27 @@ describe('NoteEditor 保存', () => {
     expect(note.excerptZh).toBeUndefined();
   });
 });
+
+describe('NoteEditor 编辑已有笔记（§0.14）', () => {
+  it('预填批注/类型/摘录，保存保留原 id 与 createdAt', async () => {
+    const sendMsg = vi.fn(async (_msg: any) => ({}));
+    vi.stubGlobal('browser', { runtime: { sendMessage: sendMsg } });
+    const existing = { id: 'n1', videoId: 'v', start: 10, end: 20, excerpt: 'old excerpt', excerptZh: '旧中文', annotation: '旧批注', type: 'value' as const, createdAt: 42 };
+    state.noteEditorCtx.value = { start: 10, end: 20, excerpt: existing.excerpt, note: existing };
+    state.cues.value = [];
+    state.videoInfo.value = { videoId: 'v', title: 't', channel: 'c', url: 'u', captionLang: 'en', fetchedAt: 1 };
+
+    const { getByText, getByDisplayValue } = render(<Host />);
+    expect((getByDisplayValue('旧批注') as HTMLTextAreaElement)).toBeTruthy();   // 预填批注
+    expect((getByDisplayValue('old excerpt') as HTMLTextAreaElement)).toBeTruthy(); // 预填摘录
+    expect(getByText(/编辑笔记/)).toBeTruthy();
+    fireEvent.click(getByText('❓ 有疑惑'));   // 换类型
+    fireEvent.click(getByText('保存'));
+    await vi.waitFor(() => expect(sendMsg).toHaveBeenCalled());
+    const note = sendMsg.mock.calls[0]![0].note;
+    expect(note.id).toBe('n1');                 // 保留原 id → db put 覆盖而非新增
+    expect(note.createdAt).toBe(42);
+    expect(note.type).toBe('confusion');
+    expect(note.annotation).toBe('旧批注');
+  });
+});

@@ -27,8 +27,8 @@ export interface SummarySection {
   points: string[];
   clipWorthy?: ClipWorthiness;
 }
-/** 金句：带时间戳，聚焦反直觉洞察/惊人事实/轶事/点透本质的表达 */
-export interface KeyQuote { quote: string; start: number; }
+/** 金句：带时间戳，聚焦反直觉洞察/惊人事实/轶事/点透本质的表达（quote=中文译文；en=英文原话，§0.14 起产出，旧摘要无此字段） */
+export interface KeyQuote { quote: string; en?: string; start: number; }
 export interface Summary {
   videoId: string; oneLiner: string;
   sections: SummarySection[];

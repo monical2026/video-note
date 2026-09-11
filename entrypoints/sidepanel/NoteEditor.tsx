@@ -1,12 +1,13 @@
 import { useState } from 'preact/hooks';
-import type { NoteType } from '../../src/types';
+import type { Note, NoteType } from '../../src/types';
 import { cues, loadVideoData, noteEditorCtx, sendMsg, videoInfo } from './state';
 import { formatTime } from '../../src/utils/time';
 
 export function NoteEditor() {
   const ctx = noteEditorCtx.value!;
-  const [type, setType] = useState<NoteType>('value');
-  const [annotation, setAnnotation] = useState('');
+  const editing = ctx.note;   // 有值 = 编辑已有笔记（预填，保存保留 id/createdAt）
+  const [type, setType] = useState<NoteType>(editing?.type ?? 'value');
+  const [annotation, setAnnotation] = useState(editing?.annotation ?? '');
   // 窗口内的 cues（excerpt 回填与中文对照共用）
   const windowCues = cues.value.filter((c) => c.start >= ctx.start && c.start <= ctx.end);
   // excerpt 为空（快捷键路径）时，从字幕取窗口文本；作为可编辑初值
@@ -16,10 +17,11 @@ export function NoteEditor() {
   const zhText = windowCues.filter((c) => c.zh).map((c) => c.zh).join(' ');
   const save = async () => {
     const videoId = videoInfo.value?.videoId ?? '';
-    await sendMsg({ type: 'SAVE_NOTE', note: {
-      id: crypto.randomUUID(), videoId,
-      start: ctx.start, end: ctx.end, excerpt, excerptZh: zhText || undefined, annotation, type, createdAt: Date.now(),
-    } });
+    const note: Note = editing
+      ? { ...editing, excerpt, excerptZh: zhText || editing.excerptZh, annotation, type }
+      : { id: crypto.randomUUID(), videoId,
+          start: ctx.start, end: ctx.end, excerpt, excerptZh: zhText || undefined, annotation, type, createdAt: Date.now() };
+    await sendMsg({ type: 'SAVE_NOTE', note });
     noteEditorCtx.value = null;
     await loadVideoData(videoId); // 刷新笔记列表
   };
@@ -31,9 +33,11 @@ export function NoteEditor() {
           <button class={type === 'confusion' ? 'on' : ''} onClick={() => setType('confusion')}>❓ 有疑惑</button>
         </div>
         <div class="meta">
-          {initialExcerpt
-            ? `[${formatTime(ctx.start)}] 摘录`
-            : `⏱ 当前播放位置 · [${formatTime(ctx.start)}]（无字幕摘录）`}
+          {editing
+            ? `[${formatTime(ctx.start)}] 编辑笔记`
+            : initialExcerpt
+              ? `[${formatTime(ctx.start)}] 摘录`
+              : `⏱ 当前播放位置 · [${formatTime(ctx.start)}]（无字幕摘录）`}
         </div>
         {zhText && <div class="excerpt-zh">{zhText}</div>}
         <textarea

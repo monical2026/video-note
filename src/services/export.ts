@@ -57,7 +57,7 @@ export function buildExportMarkdown(input: {
     });
     if (summary.keyQuotes?.length) {
       out.push('### 💬 金句', '');
-      summary.keyQuotes.forEach((k) => out.push(`- ${mdTimestampLink(video.videoId, k.start)}「${k.quote}」`));
+      summary.keyQuotes.forEach((k) => out.push(`- ${mdTimestampLink(video.videoId, k.start)}「${k.quote}」${k.en ? ` ｜ "${k.en}"` : ''}`));
       out.push('');
     }
     if (summary.knowledge.length) {

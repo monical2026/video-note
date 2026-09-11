@@ -41,4 +41,17 @@ describe('金句复制（2026-09-07 用户需求）', () => {
     await waitFor(() => expect(getByTestId('quote-copy-0').textContent).toContain('已复制'));
     vi.unstubAllGlobals();
   });
+
+  it('金句中英对照（§0.14）：渲染英文原话行，复制格式含中英两行', async () => {
+    const writeText = vi.fn(async (_t: string) => {});
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const summary = { videoId: 'v', oneLiner: 'o', sections: [], keyQuotes: [{ quote: '闭包是背包。', en: 'A closure is a backpack.', start: 10 }], knowledge: [], prerequisites: [], model: 'm', generatedAt: 1 } as any;
+    const { getByTestId, getByText } = render(<SummaryView summary={summary} llmConfigured videoId="v" onSeek={() => {}} />);
+    expect(getByText('A closure is a backpack.')).toBeTruthy();
+    fireEvent.click(getByTestId('quote-copy-0'));
+    const copied = String(writeText.mock.calls[0]?.[0]);
+    expect(copied).toContain('「闭包是背包。」');
+    expect(copied).toContain('"A closure is a backpack."');
+    vi.unstubAllGlobals();
+  });
 });

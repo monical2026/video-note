@@ -10,7 +10,7 @@ export const currentTime = signal(0);
 export const displayMode = signal<DisplayMode>('bilingual');
 export const transcriptError = signal<string>('');
 export const activeTab = signal<'transcript' | 'notes' | 'summary' | 'library' | 'settings'>('transcript');
-export const noteEditorCtx = signal<{ start: number; end: number; excerpt: string } | null>(null);
+export const noteEditorCtx = signal<{ start: number; end: number; excerpt: string; note?: Note } | null>(null);  // note=编辑已有笔记（预填+保留 id）
 
 export const sendMsg = <T = any>(msg: any): Promise<T> =>
   browser.runtime.sendMessage(msg).then((resp: any) => {

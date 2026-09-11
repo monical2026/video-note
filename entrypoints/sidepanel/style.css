@@ -138,18 +138,15 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .search-bar button:disabled { opacity: 0.35; cursor: default; }
 .transcript-wrap { position: relative; }
 .transcript { padding: 2px 12px; }
-/* §0.13 手账×仪表：时间戳等宽右对齐成列（grid 首列）+ 行间悬浮细线（::after 两端留白避开圆角）+ 大圆角行 */
-.cue { position: relative; display: grid; grid-template-columns: 46px 1fr; column-gap: 10px; padding: 8px 10px 8px 6px; border-radius: 10px; cursor: pointer; }
-.cue:not(:last-child)::after { content: ''; position: absolute; left: 56px; right: 10px; bottom: 0; height: 1px; background: color-mix(in srgb, var(--border) 55%, transparent); }
-.cue:hover::after, .cue.active::after { display: none; }
+/* §0.14 逐字稿行（用户定案参考 ③ 预览）：时间戳内联 + 中英连排一行流，大圆角行；当前句淡蓝底+左条 */
+.cue { position: relative; padding: 8px 10px; border-radius: 10px; cursor: pointer; margin-bottom: 4px; }
 .cue:hover { background: var(--bg-subtle); }
-.cue.active { background: var(--highlight); }
+.cue.active { background: var(--highlight); box-shadow: inset 3px 0 0 var(--accent); }
 .cue.active:hover { background: var(--highlight-hover); }
-.cue .ts { grid-row: 1 / span 2; align-self: start; border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px/1.9 var(--font-mono); padding: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.cue .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px var(--font-mono); padding: 0 8px 0 0; font-variant-numeric: tabular-nums; }
 .cue .ts:hover { text-decoration: underline; }
-.cue .en { color: var(--text); font-size: 13px; }
-.cue .zh { color: var(--text-secondary); font-size: 12.5px; margin-top: 1px; }
-.transcript .en, .transcript .zh { display: block; }
+.cue .en { display: inline; color: var(--text); font-size: 13px; }
+.cue .zh { display: inline; color: var(--text-secondary); font-size: 12.5px; }
 /* 搜索命中：蓝底白字（用户定案）+ 命中行左条 */
 .transcript mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 2px; padding: 0 1px; }
 .cue.hit { border-left: 3px solid var(--accent); padding-left: 6px; }
@@ -173,13 +170,13 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .notes { display: flex; flex-direction: column; }
 .notes-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 0 12px; }
 .notes-toolbar button { padding: 4px 12px; font-size: 12px; }
+/* 卡片表头（§0.14 截图风格：左「类型标签 · 图标」右等宽时间戳） */
+.note .head, .quote-card .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.head-label { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; color: var(--text-muted); }
+.head-ops { display: flex; align-items: center; gap: 10px; }
 .note { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--page-line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
-.note .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .note .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px var(--font-mono); padding: 0; font-variant-numeric: tabular-nums; }
 .note .ts:hover { text-decoration: underline; }
-.note .tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
-.note .tag.value { background: var(--accent-soft); color: var(--accent); }
-.note .tag.confusion { background: var(--clip-medium-bg); color: var(--clip-medium-fg); }
 .note .annotation { font: 13.5px/1.75 var(--font-content); color: var(--text); }
 .note .excerpt { font: 12.5px/1.7 var(--font-content); color: var(--text-secondary); margin-top: 6px; padding: 6px 10px; background: var(--bg-subtle); border-left: 3px solid var(--border-strong); border-radius: 0 6px 6px 0; }
 .excerpt-zh { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
@@ -227,9 +224,12 @@ button.ghost:hover, .ops button:hover { background: var(--bg-subtle); border-col
 .clip-low { background: var(--clip-low-bg); color: var(--clip-low-fg); }
 .summary > section > h3 { font-size: 13px; color: var(--text); margin: 12px 0 6px; }
 .summary ul.quotes { list-style: none; margin: 0; padding: 0; }
-.quotes li { margin-bottom: 10px; }
-.quotes blockquote { margin: 3px 0 0; padding: 7px 12px; border-left: 3px solid var(--quote-bar); font: 13px/1.8 var(--font-content); color: var(--text); background: var(--bg-subtle); border-radius: 0 8px 8px 0; }
-.quotes .q-ops { margin-top: 4px; display: flex; gap: 6px; }
+/* 金句卡片化（§0.14）：复制+时间戳进表头，引文不再单独占操作行 */
+.quotes .quote-card { margin-bottom: 10px; background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--quote-bar); border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow-card); }
+.quotes .quote-card .ts { border: 0; background: none; color: var(--accent); cursor: pointer; font: 11.5px var(--font-mono); padding: 0; font-variant-numeric: tabular-nums; }
+.quotes .quote-card .ts:hover { text-decoration: underline; }
+.quotes blockquote { margin: 0; padding: 0; font: 13px/1.8 var(--font-content); color: var(--text); }
+.quotes .q-en { font-size: 11.5px; color: var(--text-secondary); margin-top: 5px; line-height: 1.6; }
 .quotes .q-copy { border: 0; background: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 0; }
 .quotes .q-copy:hover { color: var(--accent); }
 

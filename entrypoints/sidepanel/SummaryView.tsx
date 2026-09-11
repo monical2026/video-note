@@ -3,10 +3,10 @@ import type { Summary } from '../../src/types';
 import { formatTime, mdTimestampLink } from '../../src/utils/time';
 import { sendMsg, summary as summarySignal } from './state';
 
-/** 金句复制格式：时间戳跳转链接 + 原话（与笔记复制一致的 Markdown） */
-export function quoteMarkdown(videoId: string, q: { quote: string; start: number }): string {
+/** 金句复制格式：时间戳跳转链接 + 中文译文 + 英文原话（§0.14） */
+export function quoteMarkdown(videoId: string, q: { quote: string; en?: string; start: number }): string {
   return `💬 **金句** · ${mdTimestampLink(videoId, q.start)}
-「${q.quote}」`;
+「${q.quote}」${q.en ? `\n"${q.en}"` : ''}`;
 }
 
 const CLIP_LABEL: Record<string, string> = { high: '切片价值：高', medium: '切片价值：中', low: '切片价值：低' };
@@ -71,15 +71,19 @@ export function SummaryView(props: { summary: Summary | null; llmConfigured: boo
       ))}
       {!!s.keyQuotes?.length && <section><h3>💬 金句</h3>
         <ul class="quotes">{s.keyQuotes.map((k, i) => (
-          <li key={i}>
-            <button class="ts" onClick={() => props.onSeek(k.start)}>{formatTime(k.start)}</button>
-            <blockquote>{k.quote}</blockquote>
-            <div class="q-ops">
-              <button class="q-copy" data-testid={`quote-copy-${i}`} title="复制金句（含时间戳跳转链接）"
-                onClick={() => copyQuote(props.videoId || s.videoId, k, i)}>
-                {copiedIdx === i ? '已复制 ✓' : copyFailIdx === i ? '复制失败 ✗' : '复制'}
-              </button>
+          <li key={i} class="quote-card">
+            <div class="head">
+              <span class="head-label">QUOTE · 💬</span>
+              <span class="head-ops">
+                <button class="q-copy" data-testid={`quote-copy-${i}`} title="复制金句（含时间戳跳转链接）"
+                  onClick={() => copyQuote(props.videoId || s.videoId, k, i)}>
+                  {copiedIdx === i ? '已复制 ✓' : copyFailIdx === i ? '复制失败 ✗' : '复制'}
+                </button>
+                <button class="ts" onClick={() => props.onSeek(k.start)}>{formatTime(k.start)}</button>
+              </span>
             </div>
+            <blockquote>{k.quote}</blockquote>
+            {k.en && <div class="q-en">{k.en}</div>}
           </li>
         ))}</ul></section>}
       {!!s.knowledge.length && <section><h3>📚 知识点清单</h3>

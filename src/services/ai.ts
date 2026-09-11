@@ -32,7 +32,7 @@ const SUMMARY_SCHEMA = {
     points: ['要点，简洁中文'],
     clipWorthy: { level: 'high|medium|low', reason: '一句话理由' },
   }],
-  keyQuotes: [{ quote: '说话者的原话（清理转写错误，保留原始语气）', start: 0 }],
+  keyQuotes: [{ quote: '金句的中文译文（保留原始语气）', en: '说话者的英文原话（清理转写错误与填充词，保留原语气）', start: 0 }],
   knowledge: [{ term: '术语（保留英文）', desc: '一句话中文说明' }],
   prerequisites: ['前置知识'],
 };
@@ -63,9 +63,9 @@ const SUMMARY_SYSTEM = `你是一名视频内容分析助手。基于带时间�
 - low：依赖前后文铺垫（如承接上文的推导中段）
 
 【金句】3~5 条，聚焦：反直觉的独特洞察 / 惊人的事实数据 / 印象深刻的轶事 / 一句话点透本质的表达。
-清理转写错误与口头填充词（um/uh/you know），但保留说话者的原始语气与用词。时间必须真实存在于逐字稿。
+每条金句必须成对给出：quote=中文译文，en=说话者的英文原话（逐字稿是英文时必须取原句，清理转写错误与口头填充词 um/uh/you know，保留原始语气与用词）。时间必须真实存在于逐字稿。
 
-所有文字用简体中文（术语/产品名保留英文）。sections 与 keyQuotes 按时间排序。`;
+所有文字用简体中文（术语/产品名保留英文；金句的 en 字段除外，必须是英文原话）。sections 与 keyQuotes 按时间排序。`;
 
 export async function summarize(config: LlmConfig, video: { videoId: string; title: string }, cues: Cue[]): Promise<Summary> {
   const chunks = chunkTranscript(cues, 12000);
